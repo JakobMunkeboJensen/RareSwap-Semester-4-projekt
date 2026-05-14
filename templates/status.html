@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }} – Pokémon pris-scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>{{ title }}</h1>
+          <p>Driftsoverblik for webapp og eksterne services.</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="row" style="align-items: center;">
+          <a class="button secondary" href="{{ url_for('pricing.home') }}">Forside</a>
+          <span class="muted">Tip: opdater siden for at re-teste.</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Status</h2>
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Komponent</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for it in items %}
+                <tr>
+                  <td class="nowrap">{{ it.label }}</td>
+                  <td>
+                    <span class="pill {% if it.ok %}ok{% else %}bad{% endif %}">
+                      {% if it.ok %}OK{% else %}Fejl{% endif %}
+                    </span>
+                    <span style="margin-left: 10px;">{{ it.value }}</span>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Links</h2>
+        <ul class="list">
+          <li><a href="{{ url_for('pricing.lookup') }}?q=Pikachu&currency=USD">Test lookup (Pikachu)</a></li>
+          <li><a href="{{ url_for('pricing.api_lookup') }}?q=Pikachu&currency=USD">Test JSON (Pikachu)</a></li>
+        </ul>
+      </section>
+
+      <footer class="footer">
+        <span class="muted">
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('auth.me') }}">Min side</a> —
+            <a href="{{ url_for('auth.logout') }}">Log ud</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a> —
+            <a href="{{ url_for('auth.register') }}">Opret bruger</a>
+          {% endif %}
+          <span style="margin-left: 10px;">Endpoint: <code>/status</code></span>
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>
+

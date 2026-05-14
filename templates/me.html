@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Min side – Pokémon pris-scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Min side</h1>
+          <p>Velkommen, <strong>{{ username }}</strong>.</p>
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <section class="card">
+            {% for category, message in messages %}
+              <p style="margin: 0;">{{ message }}</p>
+            {% endfor %}
+          </section>
+        {% endif %}
+      {% endwith %}
+
+      <section class="card">
+        <h2>Hurtige links</h2>
+        <p class="muted" style="margin-top: 6px;">
+          E-mail: <strong>{{ email if email else "Ikke sat" }}</strong>
+        </p>
+        <div class="row">
+          <a class="button" href="{{ url_for('pricing.home') }}">Til pris-scanneren</a>
+          <a class="button secondary" href="{{ url_for('pricing.status') }}">Status</a>
+          <a class="button secondary" href="{{ url_for('auth.logout') }}">Log ud</a>
+        </div>
+      </section>
+
+      <footer class="footer">
+        <span class="muted">Endpoint: <code>/me</code></span>
+      </footer>
+    </main>
+  </body>
+</html>
+

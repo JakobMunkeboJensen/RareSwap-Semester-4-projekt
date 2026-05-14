@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Resultater – Pokémon pris-scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Resultater</h1>
+          <p>Søgning: <strong>{{ query }}</strong></p>
+        </div>
+      </header>
+
+      <section class="card">
+        <form class="form" action="{{ url_for('pricing.lookup') }}" method="get">
+          <label class="label" for="q">Søg igen</label>
+          <div class="row">
+            <input id="q" name="q" class="input" value="{{ query }}" />
+            <select id="currency" name="currency" class="select" aria-label="Vælg valuta">
+              {% for code, sym in currencies.items() %}
+                <option value="{{ code }}" {% if code == currency %}selected{% endif %}>{{ code }} ({{ sym }})</option>
+              {% endfor %}
+            </select>
+            <button class="button" type="submit">Søg</button>
+            <a class="button secondary" href="{{ url_for('pricing.home') }}">Forside</a>
+          </div>
+        </form>
+      </section>
+
+      {% include "_webcam_scanner.html" %}
+
+      {% if error %}
+        <section class="card danger">
+          <h2>Der opstod et problem</h2>
+          <p>{{ error }}</p>
+        </section>
+      {% endif %}
+
+      {% if rows and (not error) %}
+        <section class="card">
+          <h2>Fundne priser</h2>
+          <p class="muted">
+            Valuta: <strong>{{ currency }}</strong> ({{ currency_symbol }})
+            {% if currency_notice %}<span class="notice">— {{ currency_notice }}</span>{% endif %}
+          </p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Billede</th>
+                  <th>Kort</th>
+                  <th>Sæt</th>
+                  <th>Market ({{ currency }})</th>
+                  <th>Low ({{ currency }})</th>
+                  <th>Mid ({{ currency }})</th>
+                  <th>High ({{ currency }})</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in rows %}
+                  <tr>
+                    <td>
+                      {% if r.image_small or r.image_large %}
+                        {% set thumb = r.image_small or r.image_large %}
+                        {% set large = r.image_large or r.image_small %}
+                        <button
+                          class="thumb-button"
+                          type="button"
+                          data-large="{{ large }}"
+                          data-title="{{ r.name }}"
+                          aria-label="Vis billede større: {{ r.name }}"
+                        >
+                          <img class="card-thumb" src="{{ thumb }}" alt="Billede af {{ r.name }}" loading="lazy" />
+                        </button>
+                      {% else %}
+                        <span class="thumb-placeholder" aria-hidden="true"></span>
+                      {% endif %}
+                    </td>
+                    <td class="nowrap">{{ r.name }}</td>
+                    <td class="muted">{{ r.set }}</td>
+                    <td>{{ r.market if r.market is not none else "—" }}</td>
+                    <td>{{ r.low if r.low is not none else "—" }}</td>
+                    <td>{{ r.mid if r.mid is not none else "—" }}</td>
+                    <td>{{ r.high if r.high is not none else "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+
+      <div class="lightbox" id="lightbox" aria-hidden="true">
+        <div class="lightbox-backdrop" data-close="1"></div>
+        <div class="lightbox-panel" role="dialog" aria-modal="true" aria-labelledby="lightbox-title">
+          <div class="lightbox-header">
+            <div class="lightbox-title" id="lightbox-title">Kort</div>
+            <button class="lightbox-close" type="button" data-close="1" aria-label="Luk">×</button>
+          </div>
+          <div class="lightbox-body">
+            <img id="lightbox-img" class="lightbox-img" alt="" />
+          </div>
+          <div class="lightbox-footer">
+            <a id="lightbox-open" class="button secondary" href="#" target="_blank" rel="noreferrer">Åbn i ny fane</a>
+          </div>
+        </div>
+      </div>
+
+      {% if (not rows) and (not error) %}
+        <section class="card">
+          <p>Ingen resultater at vise.</p>
+        </section>
+      {% endif %}
+
+      <footer class="footer">
+        <span class="muted">
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('auth.me') }}">Min side</a> —
+            <a href="{{ url_for('auth.logout') }}">Log ud</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a> —
+            <a href="{{ url_for('auth.register') }}">Opret bruger</a>
+          {% endif %}
+          <span style="margin-left: 10px;">JSON endpoint: <code>/api/lookup?q={{ query }}</code></span>
+        </span>
+      </footer>
+    </main>
+
+    <script>
+      (function () {
+        const lb = document.getElementById("lightbox");
+        const img = document.getElementById("lightbox-img");
+        const title = document.getElementById("lightbox-title");
+        const open = document.getElementById("lightbox-open");
+
+        function show(url, t) {
+          if (!url) return;
+          img.src = url;
+          img.alt = t ? ("Billede af " + t) : "Kortbillede";
+          title.textContent = t || "Kort";
+          open.href = url;
+          lb.classList.add("open");
+          lb.setAttribute("aria-hidden", "false");
+          document.body.style.overflow = "hidden";
+        }
+
+        function hide() {
+          lb.classList.remove("open");
+          lb.setAttribute("aria-hidden", "true");
+          img.src = "";
+          document.body.style.overflow = "";
+        }
+
+        document.addEventListener("click", function (e) {
+          const btn = e.target.closest(".thumb-button");
+          if (btn) {
+            show(btn.getAttribute("data-large"), btn.getAttribute("data-title"));
+            return;
+          }
+          if (e.target && e.target.getAttribute && e.target.getAttribute("data-close") === "1") {
+            hide();
+          }
+        });
+
+        document.addEventListener("keydown", function (e) {
+          if (e.key === "Escape") hide();
+        });
+      })();
+    </script>
+  </body>
+</html>
+

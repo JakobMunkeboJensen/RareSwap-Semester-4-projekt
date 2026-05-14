@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pokémon pris-scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Pokémon pris-scanner</h1>
+          <p>Søg på kortnavn og se prisfelter fra PokemonTCG.io.</p>
+        </div>
+      </header>
+
+      <section class="card">
+        <form class="form" action="{{ url_for('pricing.lookup') }}" method="get">
+          <label class="label" for="q">Kortnavn</label>
+          <div class="row">
+            <input
+              id="q"
+              name="q"
+              class="input"
+              placeholder="Fx Charizard"
+              autocomplete="off"
+              required
+            />
+            <select id="currency" name="currency" class="select" aria-label="Vælg valuta">
+              {% for code, sym in currencies.items() %}
+                <option value="{{ code }}" {% if code == currency %}selected{% endif %}>{{ code }} ({{ sym }})</option>
+              {% endfor %}
+            </select>
+            <button class="button" type="submit">Søg</button>
+          </div>
+          <p class="hint">
+            Tip: Prøv kun selve navnet først (fx “Pikachu”), og vær forberedt på at nogle
+            kort ikke har prisdata.
+          </p>
+        </form>
+      </section>
+
+      {% include "_webcam_scanner.html" %}
+
+      <footer class="footer">
+        <span class="muted">
+          {% if current_user.is_authenticated %}
+            Logget ind som <strong>{{ current_user.username }}</strong> —
+            <a href="{{ url_for('auth.me') }}">Min side</a> —
+            <a href="{{ url_for('auth.logout') }}">Log ud</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a> —
+            <a href="{{ url_for('auth.register') }}">Opret bruger</a>
+          {% endif %}
+          <span style="margin-left: 10px;">API: PokemonTCG.io</span>
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>
+

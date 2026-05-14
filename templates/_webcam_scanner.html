@@ -1,0 +1,25 @@
+<section class="card webcam-card" data-webcam-scanner data-scanner-target="#q" aria-label="Scan med webcam">
+  <h2 class="webcam-title">Scan med webcam</h2>
+  <p class="hint">
+    Hold kortet så <strong>navnet er øverst</strong> i billedet (samme princip som Pi-scanneren). Undgå skarpt genskin;
+    første OCR-kørsel downloader sprogdata og kan tage lidt tid.
+  </p>
+  <div class="webcam-preview-wrap">
+    <video
+      class="webcam-video"
+      data-webcam-video
+      playsinline
+      muted
+      aria-label="Webcam-forhåndsvisning"
+    ></video>
+  </div>
+  <div class="row webcam-actions">
+    <button type="button" class="button secondary" data-webcam-start>Start webcam</button>
+    <button type="button" class="button" data-webcam-capture disabled>Fang og læs navn</button>
+    <button type="button" class="button secondary" data-webcam-stop disabled>Stop webcam</button>
+  </div>
+  <p class="webcam-status muted" data-webcam-status role="status"></p>
+  <canvas data-webcam-canvas-full hidden></canvas>
+  <canvas data-webcam-canvas-crop hidden></canvas>
+</section>
+<script src="{{ url_for('static', filename='js/webcam_scanner.js') }}" defer></script>
