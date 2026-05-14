@@ -1,3 +1,5 @@
+"""Delte Flask-udvidelsesinstanser (db, login_manager)."""
+
 from __future__ import annotations
 
 from flask_login import LoginManager

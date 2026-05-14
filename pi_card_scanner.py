@@ -29,7 +29,8 @@ API_SEARCH_PATH = os.getenv("POKEMON_API_SEARCH_PATH", "/cards")
 
 
 def _capture_frame(picam2: Picamera2) -> np.ndarray:
-    frame = picam2.capture_array()  # typisk RGB
+    """Tag et billede fra Pi-kameraet og konvertér fra RGB til BGR."""
+    frame = picam2.capture_array()
     return cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
 
@@ -49,6 +50,7 @@ def _crop_name_band(img_bgr: np.ndarray) -> np.ndarray:
 
 
 def _preprocess_for_ocr(img_bgr: np.ndarray) -> np.ndarray:
+    """Konvertér til gråtone, støjreducer og binarisér billedet til Tesseract."""
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.bilateralFilter(gray, 9, 75, 75)
     gray = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
@@ -61,6 +63,7 @@ def _preprocess_for_ocr(img_bgr: np.ndarray) -> np.ndarray:
 
 
 def _ocr_name(img_bin: np.ndarray) -> str:
+    """Læs kortnavnet fra et binariseret billede med Tesseract og rens outputtet."""
     # PSM 7: antager én tekstlinje (navnet).
     text = pytesseract.image_to_string(img_bin, config="--oem 3 --psm 7")
     text = text.strip()
@@ -88,6 +91,7 @@ def lookup_cards_from_api(name: str, timeout_s: float = 10.0) -> list[dict[str, 
 
 
 def main() -> None:
+    """Kør Pi-kortscanneren: tag billeder i løkke og slå kortnavne op i API'et."""
     picam2 = Picamera2()
     picam2.configure(picam2.create_preview_configuration(main={"size": (1280, 720)}))
     picam2.start()

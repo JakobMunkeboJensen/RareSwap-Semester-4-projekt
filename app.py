@@ -1,3 +1,5 @@
+"""Indgangspunkt for RareSwap Flask-webapplikationen."""
+
 from __future__ import annotations
 
 import logging

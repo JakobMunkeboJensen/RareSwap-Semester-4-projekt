@@ -1,3 +1,5 @@
+"""Scan Pokémon-kort med webcam, læs kortnavnet med OCR og slå priser op."""
+
 from __future__ import annotations
 
 import argparse
@@ -29,12 +31,13 @@ KORT_SUFFIXES = [
     "v",
     "gx",
     "ex",
-    "mega",
+    "mega"
     "tag team",
 ]
 
 
 def normaliser_kortnavn(navn: str) -> str:
+    """Fjern sjældenhedsnøgleord og kortsufikser for at forbedre API-matchkvaliteten."""
     n = navn.strip()
     if not n:
         return n
@@ -49,6 +52,7 @@ def normaliser_kortnavn(navn: str) -> str:
 
 
 def _tjek_afhaengigheder() -> None:
+    """Kast RuntimeError hvis påkrævede valgfri afhængigheder mangler."""
     if cv2 is None or np is None:
         raise RuntimeError("Installer `opencv-python` og `numpy` for kamera-behandling.")
     if pytesseract is None:
@@ -56,6 +60,7 @@ def _tjek_afhaengigheder() -> None:
 
 
 def _order_points(pts: np.ndarray) -> np.ndarray:
+    """Sorter fire hjørnepunkter som [øverst-venstre, øverst-højre, nederst-højre, nederst-venstre]."""
     rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
     rect[0] = pts[np.argmin(s)]  # top-left
@@ -68,6 +73,7 @@ def _order_points(pts: np.ndarray) -> np.ndarray:
 
 
 def _four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
+    """Anvend en perspektivtransformation for at rette et firkantområde til et rektangel."""
     rect = _order_points(pts)
     (tl, tr, br, bl) = rect
 
@@ -95,6 +101,7 @@ def _four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
 
 
 def _detect_card_quad(frame: np.ndarray) -> np.ndarray | None:
+    """Detektér kortets fire hjørnepunkter i billedet, eller returner None."""
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
@@ -128,6 +135,7 @@ def _detect_card_quad(frame: np.ndarray) -> np.ndarray | None:
 
 
 def _preprocess_roi_for_ocr(roi_gray: np.ndarray) -> np.ndarray:
+    """Opskalér, støjreducer og binarisér et gråtone-ROI til Tesseract."""
     roi = cv2.resize(roi_gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
     roi = cv2.bilateralFilter(roi, 9, 75, 75)
 
@@ -138,6 +146,7 @@ def _preprocess_roi_for_ocr(roi_gray: np.ndarray) -> np.ndarray:
 
 
 def _ocr_card_name(warped_image: np.ndarray) -> str:
+    """Kør Tesseract på det øverste navnebånd af et rettet kortbillede og returner den bedste linje."""
     h, w = warped_image.shape[:2]
     if h < 100 or w < 100:
         return ""
@@ -233,6 +242,7 @@ def _print_priser_for_kortnavn(kortnavn: str) -> None:
 
 
 def _sharpness_score(img_bgr: np.ndarray) -> float:
+    """Returner Laplacian-variansen af billedet som et mål for skarphed/fokus."""
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
@@ -288,10 +298,12 @@ def _capture_best_of_n(camera_index: int, n: int, show_window: bool) -> np.ndarr
 
 
 def _name_similarity(a: str, b: str) -> float:
+    """Returner et 0–1 lighedsforhold mellem to kortnavne-strenge."""
     return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
 
 def _rank_cards_by_name(cards: list[dict], query: str) -> list[dict]:
+    """Sortér kort efter navnelighed med søgningen, højeste match først."""
     scored: list[tuple[float, dict]] = []
     qn = normaliser_kortnavn(query) or query
     for c in cards:
@@ -332,6 +344,7 @@ def _choose_best_match(cards: list[dict], query: str) -> dict | None:
 
 
 def scan_kort_med_kamera(camera_index: int, show_window: bool) -> None:
+    """Tag et kortbillede, læs navnet med OCR og udskriv TCG-priser."""
     frame = _capture_best_of_n(camera_index=camera_index, n=8, show_window=show_window)
     quad = _detect_card_quad(frame)
     if quad is None:
@@ -390,6 +403,7 @@ def scan_kort_med_kamera(camera_index: int, show_window: bool) -> None:
 
 
 def scan_loop_manuel() -> None:
+    """Interaktiv CLI-løkke til at slå kortpriser op ved at skrive navnet."""
     print("=== Pokémon Pris-Scanner (manuel) ===")
     print("Skriv navnet på et Pokémon-kort (eller en del af navnet).")
     print("Tomt input lukker programmet.\n")
@@ -402,6 +416,7 @@ def scan_loop_manuel() -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """Analysér CLI-argumenter og videresend til kamera- eller manueltilstand."""
     parser = argparse.ArgumentParser(description="Pokemon kort scanner (kamera + OCR + prisopslag)")
     parser.add_argument("--camera", action="store_true", help="Brug kamera + OCR til at læse kortnavn")
     parser.add_argument("--camera-index", type=int, default=0, help="Kamera index (typisk 0)")

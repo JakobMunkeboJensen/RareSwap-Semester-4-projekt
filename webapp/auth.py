@@ -1,3 +1,5 @@
+"""Blueprint til brugerautentifikation: registrering, login, logout og adgangskode-nulstilling."""
+
 from __future__ import annotations
 
 import logging
@@ -20,10 +22,12 @@ def _serializer(secret_key: str) -> URLSafeTimedSerializer:
 
 
 def _make_reset_token(secret_key: str, user: User) -> str:
+    """Generer et signeret nulstillingstoken der indkoder bruger-ID og nuværende adgangskode-hash."""
     return _serializer(secret_key).dumps({"uid": int(user.id), "ph": user.password_hash})
 
 
 def _verify_reset_token(secret_key: str, token: str, max_age_s: int) -> User | None:
+    """Returner brugeren hvis tokenet er gyldigt og ubrugt, ellers None."""
     try:
         data = _serializer(secret_key).loads(token, max_age=max_age_s)
     except SignatureExpired:
@@ -48,6 +52,7 @@ def _verify_reset_token(secret_key: str, token: str, max_age_s: int) -> User | N
 
 @bp.get("/register")
 def register():
+    """Vis registreringsformularen."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
     return render_template("register.html")
@@ -55,6 +60,7 @@ def register():
 
 @bp.post("/register")
 def register_post():
+    """Valider registreringsinput og opret en ny bruger."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 
@@ -102,6 +108,7 @@ def register_post():
 
 @bp.get("/login")
 def login():
+    """Vis login-formularen."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
     next_url = request.args.get("next")
@@ -110,6 +117,7 @@ def login():
 
 @bp.post("/login")
 def login_post():
+    """Valider legitimationsoplysninger og log brugeren ind."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 
@@ -132,6 +140,7 @@ def login_post():
 
 @bp.get("/logout")
 def logout():
+    """Log den nuværende bruger ud og viderestil til forsiden."""
     if current_user.is_authenticated:
         logout_user()
     flash("Du er nu logget ud.", "success")
@@ -141,11 +150,13 @@ def logout():
 @bp.get("/me")
 @login_required
 def me():
+    """Vis den nuværende brugers profilside."""
     return render_template("me.html", username=current_user.username, email=current_user.email)
 
 
 @bp.get("/forgot-password")
 def forgot_password():
+    """Vis formularen til glemt adgangskode."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
     return render_template("forgot_password.html")
@@ -153,6 +164,7 @@ def forgot_password():
 
 @bp.post("/forgot-password")
 def forgot_password_post():
+    """Send en nulstillingsmail hvis e-mailen tilhører en kendt konto."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 
@@ -181,6 +193,7 @@ def forgot_password_post():
 
 @bp.get("/reset/<token>")
 def reset_password(token: str):
+    """Vis adgangskode-nulstillingsformularen hvis tokenet er gyldigt."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 
@@ -197,6 +210,7 @@ def reset_password(token: str):
 
 @bp.post("/reset/<token>")
 def reset_password_post(token: str):
+    """Anvend den nye adgangskode efter verificering af nulstillingstokenet."""
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 

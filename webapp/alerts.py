@@ -1,3 +1,5 @@
+"""Blueprint til håndtering af brugerens prisalarmer."""
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +18,10 @@ bp = Blueprint("alerts", __name__)
 @bp.get("/alerts")
 @login_required
 def list_alerts():
+    """Vis alle aktive prisalarmer for den nuværende bruger."""
     alerts = db.session.execute(
         db.select(PriceAlert)
-        .where(PriceAlert.user_id == current_user.id, PriceAlert.is_active == True)
+        .where(PriceAlert.user_id == current_user.id, PriceAlert.is_active)
         .order_by(PriceAlert.created_at.desc())
     ).scalars().all()
     return render_template("alerts.html", alerts=alerts)
@@ -27,6 +30,7 @@ def list_alerts():
 @bp.post("/alerts/create")
 @login_required
 def create_alert():
+    """Opret en ny prisalarm eller opdater grænsen hvis en allerede eksisterer."""
     card_name = (request.form.get("card_name") or "").strip()
     card_set = (request.form.get("card_set") or "").strip()
     threshold_str = (request.form.get("threshold_usd") or "").strip()
@@ -48,7 +52,7 @@ def create_alert():
             PriceAlert.user_id == current_user.id,
             PriceAlert.card_name == card_name,
             PriceAlert.card_set == card_set,
-            PriceAlert.is_active == True,
+            PriceAlert.is_active,
         )
     ).scalar_one_or_none()
 
@@ -73,6 +77,7 @@ def create_alert():
 @bp.post("/alerts/<int:alert_id>/delete")
 @login_required
 def delete_alert(alert_id: int):
+    """Soft-slet en prisalarm ved at markere den som inaktiv."""
     alert = db.session.get(PriceAlert, alert_id)
     if alert is None or alert.user_id != current_user.id:
         flash("Alarm ikke fundet.", "error")

@@ -1,3 +1,5 @@
+"""SMTP e-mail-hjælper til adgangskode-nulstilling og prisalarmer."""
+
 from __future__ import annotations
 
 import logging
@@ -10,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def send_email(to_email: str, subject: str, body: str) -> None:
+    """Send en e-mail i klartekst; logger og returnerer tidligt hvis SMTP ikke er konfigureret."""
     app = current_app
     host = str(app.config.get("SMTP_HOST") or "").strip()
     port = int(app.config.get("SMTP_PORT") or 587)

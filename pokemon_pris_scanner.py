@@ -1,3 +1,5 @@
+"""Hent Pokémon-kortpriser fra PokemonTCG API med offline-fallback."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -7,7 +9,7 @@ import requests
 API_URL = "https://api.pokemontcg.io/v2/cards"
 _DEFAULT_TIMEOUT_S = 20.0
 
-# Simpel "offline" fallback-database, hvis API'et ikke svarer
+# Offline fallback used when the API is unreachable
 FALLBACK_KORT = [
     {"name": "Charizard", "set": "Base Set", "market": 2500, "low": 2000, "mid": 2600, "high": 3000},
     {"name": "Pikachu", "set": "Base Set", "market": 50, "low": 30, "mid": 60, "high": 80},
@@ -21,6 +23,7 @@ _session.headers.update({"User-Agent": "pokemon-pris-scanner/1.0"})
 def hent_kort_fra_api(
     kortnavn: str, *, saet: str = "", timeout_s: float = _DEFAULT_TIMEOUT_S
 ) -> list[dict[str, Any]] | None:
+    """Søg i PokemonTCG API; returner None ved timeout eller forbindelsesfejl."""
     q = f'name:"{kortnavn}"'
     if saet:
         q += f' set.name:"{saet}"'
@@ -43,6 +46,7 @@ def hent_kort_fra_api(
 
 
 def udtraek_priser(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Udtræk navn, sæt, billeder og TCGPlayer-priser fra rå API-kortobjekter."""
     resultater: list[dict[str, Any]] = []
 
     for c in cards:
@@ -86,6 +90,7 @@ def udtraek_priser(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def scan_kort():
+    """Interaktiv CLI-løkke til at slå kortpriser op ved navn."""
     print("=== Pokémon Pris-Scanner (internet/API) ===")
     print("Skriv navnet på et Pokémon-kort (eller en del af navnet).")
     print("Tomt input lukker programmet.\n")

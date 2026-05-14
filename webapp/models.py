@@ -1,3 +1,5 @@
+"""SQLAlchemy ORM-modeller for brugere, prisalarmer og prishistorik."""
+
 from __future__ import annotations
 
 import logging
@@ -13,19 +15,25 @@ logger = logging.getLogger(__name__)
 
 
 class User(db.Model, UserMixin):
+    """Applikationsbruger med hashet adgangskode og valgfri e-mail."""
+
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(255), nullable=True)
     password_hash = db.Column(db.String(255), nullable=False)
 
     def set_password(self, password: str) -> None:
+        """Hash og gem den givne adgangskode i klartekst."""
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
+        """Returner True hvis adgangskoden matcher det gemte hash."""
         return check_password_hash(self.password_hash, password)
 
 
 class PriceAlert(db.Model):
+    """Brugerdefineret alarm der udløses når et kort falder under en USD-grænse."""
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
     card_name = db.Column(db.String(200), nullable=False)
@@ -38,6 +46,8 @@ class PriceAlert(db.Model):
 
 
 class PriceHistory(db.Model):
+    """Snapshot af et korts markedspris på et givet tidspunkt."""
+
     id = db.Column(db.Integer, primary_key=True)
     card_name = db.Column(db.String(200), nullable=False, index=True)
     card_set = db.Column(db.String(200), nullable=False, default="")
@@ -46,6 +56,7 @@ class PriceHistory(db.Model):
 
 
 def ensure_sqlite_user_email_column(app: Flask) -> None:
+    """Tilføj e-mail-kolonnen til user-tabellen hvis den mangler (kun SQLite)."""
     try:
         uri = str(app.config.get("SQLALCHEMY_DATABASE_URI") or "")
         if not uri.startswith("sqlite:///"):

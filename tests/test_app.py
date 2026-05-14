@@ -1,3 +1,5 @@
+"""Integrationstests for RareSwap Flask-applikationen."""
+
 from __future__ import annotations
 
 import pytest
@@ -7,6 +9,7 @@ from webapp import create_app
 
 @pytest.fixture()
 def app():
+    """Opret en applikationsinstans konfigureret til in-memory-test."""
     app = create_app()
     app.config["TESTING"] = True
     app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///:memory:"
@@ -15,33 +18,34 @@ def app():
 
 @pytest.fixture()
 def client(app):
+    """Returner en testklient for den givne app."""
     return app.test_client()
 
-
-# --- Sider der skal kunne åbnes uden login ---
 
 def test_forside(client):
     r = client.get("/")
     assert r.status_code == 200
 
+
 def test_login_side(client):
     r = client.get("/login")
     assert r.status_code == 200
+
 
 def test_register_side(client):
     r = client.get("/register")
     assert r.status_code == 200
 
+
 def test_status_side(client):
     r = client.get("/status")
     assert r.status_code == 200
 
+
 def test_me_kraver_login(client):
     r = client.get("/me")
-    assert r.status_code == 302  # redirect til login
+    assert r.status_code == 302
 
-
-# --- Registrering ---
 
 def test_registrer_bruger(client):
     r = client.post("/register", data={
@@ -51,6 +55,7 @@ def test_registrer_bruger(client):
     }, follow_redirects=True)
     assert r.status_code == 200
 
+
 def test_registrer_for_kort_kodeord(client):
     r = client.post("/register", data={
         "username": "testbruger",
@@ -58,6 +63,7 @@ def test_registrer_for_kort_kodeord(client):
         "password2": "abc",
     }, follow_redirects=True)
     assert b"mindst 6" in r.data
+
 
 def test_registrer_kodeord_matcher_ikke(client):
     r = client.post("/register", data={
@@ -67,6 +73,7 @@ def test_registrer_kodeord_matcher_ikke(client):
     }, follow_redirects=True)
     assert b"matcher ikke" in r.data
 
+
 def test_registrer_for_kort_brugernavn(client):
     r = client.post("/register", data={
         "username": "ab",
@@ -75,8 +82,6 @@ def test_registrer_for_kort_brugernavn(client):
     }, follow_redirects=True)
     assert b"mindst 3" in r.data
 
-
-# --- Login ---
 
 def test_login_forkert_kodeord(client):
     client.post("/register", data={
@@ -89,6 +94,7 @@ def test_login_forkert_kodeord(client):
         "password": "forkert",
     }, follow_redirects=True)
     assert b"Forkert" in r.data
+
 
 def test_login_og_logout(client):
     client.post("/register", data={
@@ -106,13 +112,12 @@ def test_login_og_logout(client):
     assert r.status_code == 200
 
 
-# --- API ---
-
 def test_api_lookup_uden_query(client):
     r = client.get("/api/lookup?q=")
     assert r.status_code == 200
     data = r.get_json()
     assert data["error"] is not None
+
 
 def test_api_lookup_returnerer_json(client):
     r = client.get("/api/lookup?q=Pikachu")

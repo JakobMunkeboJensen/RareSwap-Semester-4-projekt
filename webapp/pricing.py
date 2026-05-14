@@ -1,11 +1,13 @@
+"""Blueprint til kortprisopslag, valutakonvertering, prishistorik og statusside."""
+
 from __future__ import annotations
 
 import logging
 import os
 import time
 from collections import deque
-from datetime import datetime, timedelta
 from dataclasses import asdict, dataclass
+from datetime import datetime, timedelta
 from typing import Any, TypedDict
 
 import requests
@@ -60,6 +62,7 @@ class LookupResult(TypedDict):
 
 
 def _to_float(v: Any) -> float | None:
+    """Konverter en numerisk-lignende værdi til float, returner None ved fejl."""
     if v is None:
         return None
     if isinstance(v, (int, float)):
@@ -71,6 +74,7 @@ def _to_float(v: Any) -> float | None:
 
 
 def _get_rates(base: str) -> dict[str, float]:
+    """Returner valutakurser for den givne basisvaluta med 6-timers cache i hukommelsen."""
     ts_key = f"ts_{base}"
     rates_key = f"rates_{base}"
     now = time.time()
@@ -154,7 +158,7 @@ def _check_and_fire_alerts(card_name: str, card_set: str, market_usd: float) -> 
             db.select(PriceAlert).where(
                 PriceAlert.card_name == card_name,
                 PriceAlert.card_set == card_set,
-                PriceAlert.is_active == True,
+                PriceAlert.is_active,
                 PriceAlert.threshold_usd >= market_usd,
             )
         ).scalars().all()
@@ -189,6 +193,7 @@ def _check_and_fire_alerts(card_name: str, card_set: str, market_usd: float) -> 
 
 
 def _rate_limit_or_429() -> None:
+    """Afbryd med 429 hvis den kaldende IP har overskredet den konfigurerede anmodningsrate."""
     ip = (request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or request.remote_addr or "unknown")
     now = time.time()
     q = _rl_by_ip.get(ip)
@@ -204,6 +209,7 @@ def _rate_limit_or_429() -> None:
 
 
 def _pokemontcg_healthcheck(timeout_s: float = 4.0) -> tuple[bool, str]:
+    """Ping kort-API'et og returner (ok, menneskevenlig statusbesked)."""
     if USE_LOCAL_CARD_API:
         try:
             base = LOCAL_CARD_API_BASE_URL.rstrip("/")
@@ -412,11 +418,13 @@ def _lookup_prices(name_query: str, currency: str, saet: str = "") -> LookupResu
 
 @bp.get("/")
 def home():
+    """Vis søgningens startside."""
     return render_template("index.html", currencies=SUPPORTED_CURRENCIES, currency="USD")
 
 
 @bp.get("/lookup")
 def lookup():
+    """Slå kortpriser op og vis resultatsiden."""
     _rate_limit_or_429()
     q = request.args.get("q", "")
     currency = request.args.get("currency", "USD")
@@ -427,6 +435,7 @@ def lookup():
 
 @bp.get("/api/lookup")
 def api_lookup():
+    """JSON-endpoint til kortprisopslag."""
     _rate_limit_or_429()
     q = request.args.get("q", "")
     currency = request.args.get("currency", "USD")
@@ -444,6 +453,7 @@ def api_lookup():
 
 @bp.get("/history")
 def history():
+    """Vis historiske markedspriser for et givet kort som diagram."""
     name = (request.args.get("name") or "").strip()
     card_set = (request.args.get("set") or "").strip()
 
@@ -464,6 +474,7 @@ def history():
 
 @bp.get("/status")
 def status():
+    """Vis en sundhedstjekside for API'et og valutakurs-cachen."""
     _rate_limit_or_429()
     api_ok, api_msg = _pokemontcg_healthcheck()
 

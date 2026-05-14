@@ -1,3 +1,5 @@
+"""Selvstændig Flask micro-API til Pokémon-kortdata med live PokemonTCG.io-opslag."""
+
 from __future__ import annotations
 
 import os
@@ -178,6 +180,7 @@ _FX_TTL_S = 6 * 60 * 60
 
 
 def _get_eur_to_dkk_rate() -> float | None:
+    """Returner EUR→DKK-valutakursen, cachet i 6 timer."""
     now = time.time()
     ts = float(_fx_cache.get("ts") or 0.0)
     rates = _fx_cache.get("rates")
@@ -221,6 +224,7 @@ def _normalize_local_card(c: dict[str, Any]) -> dict[str, Any]:
 
 
 def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict[str, Any]]:
+    """Hent op til 12 kort fra PokemonTCG.io og normaliser dem til et fladt dict."""
     q = (name or "").strip()
     if not q:
         return []
@@ -271,12 +275,12 @@ def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict
 
 @app.get("/cards")
 def get_cards():
+    """Returner alle kort eller filtrer efter navn. Prøver live API først, falder tilbage til lokal liste."""
     name_query = request.args.get("name", "").lower()
 
     if not name_query:
         return jsonify([_normalize_local_card(c) for c in POKEMON_KORT])
 
-    # Try live lookup first (gives real-ish prices + images)
     try:
         live = fetch_cards_from_pokemontcg(request.args.get("name", ""))
         if live:
@@ -290,6 +294,7 @@ def get_cards():
 
 @app.get("/cards/<name>")
 def get_single_card(name: str):
+    """Returner et enkelt kort efter navn. Prøver live API først, falder tilbage til lokal liste."""
     name_lower = name.lower()
 
     try:
@@ -306,6 +311,5 @@ def get_single_card(name: str):
 
 
 if __name__ == "__main__":
-    # API'et kører på http://127.0.0.1:5000/
     app.run(host="127.0.0.1", port=5000, debug=True)
 
