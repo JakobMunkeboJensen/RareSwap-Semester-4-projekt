@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
@@ -163,8 +163,6 @@ def forgot_password_post():
 
     user = db.session.execute(db.select(User).where(User.email == email)).scalar_one_or_none()
     if user is not None and user.email:
-        from flask import current_app
-
         token = _make_reset_token(current_app.config["SECRET_KEY"], user)
         link = url_for("auth.reset_password", token=token, _external=True)
         body = (
@@ -186,8 +184,6 @@ def reset_password(token: str):
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
 
-    from flask import current_app
-
     user = _verify_reset_token(
         current_app.config["SECRET_KEY"],
         token=token,
@@ -203,8 +199,6 @@ def reset_password(token: str):
 def reset_password_post(token: str):
     if current_user.is_authenticated:
         return redirect(url_for("auth.me"))
-
-    from flask import current_app
 
     user = _verify_reset_token(
         current_app.config["SECRET_KEY"],

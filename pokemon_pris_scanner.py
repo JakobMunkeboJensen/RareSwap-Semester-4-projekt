@@ -1,12 +1,3 @@
-"""
-Pokemon pris-scanner via PokemonTCG API.
-
-Dette script kan:
-- søge kort via PokemonTCG API baseret på kortnavn
-- udtrække prisfelter fra API-respons
-- falde tilbage til lokal eksempeldata ved netværksfejl
-"""
-
 from __future__ import annotations
 
 from typing import Any
@@ -28,51 +19,30 @@ _session.headers.update({"User-Agent": "pokemon-pris-scanner/1.0"})
 
 
 def hent_kort_fra_api(
-    kortnavn: str, *, timeout_s: float = _DEFAULT_TIMEOUT_S
+    kortnavn: str, *, saet: str = "", timeout_s: float = _DEFAULT_TIMEOUT_S
 ) -> list[dict[str, Any]] | None:
-    """
-    Henter kortdata fra PokemonTCG.io API for et givent navn.
-
-    Args:
-        kortnavn: Kortnavn eller delvist navn der skal søges efter.
-
-    Returns:
-        list[dict]: Liste af kortobjekter fra API'et ved succes.
-        None: Ved timeout eller forbindelsesfejl.
-
-    Notes:
-        Søgningen begrænses til de første 10 resultater.
-    """
+    q = f'name:"{kortnavn}"'
+    if saet:
+        q += f' set.name:"{saet}"'
     params = {
-        "q": f"name:{kortnavn}",
-        "pageSize": 10,
+        "q": q,
+        "pageSize": 30,
     }
 
-    print(f"Søger i PokemonTCG API efter: {kortnavn}")
+    print(f"Søger i PokemonTCG API efter: {kortnavn}" + (f" (sæt: {saet})" if saet else ""))
     try:
         resp = _session.get(API_URL, params=params, timeout=timeout_s)
-        resp.raise_for_status()  # smider fejl ved fx 404/500
+        resp.raise_for_status()
         data = resp.json()
         cards = data.get("data", [])
         return cards if isinstance(cards, list) else []
     except requests.exceptions.Timeout:
-        # Vi håndterer timeout højere oppe som "brug fallback"
         return None
     except requests.exceptions.ConnectionError:
-        # Ingen internet / kan ikke nå API'et
         return None
 
 
 def udtraek_priser(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Går igennem kort fra API'et og finder prisfelter, hvis de findes.
-
-    Args:
-        cards: Liste af kortobjekter fra PokemonTCG API.
-
-    Returns:
-        list[dict]: Liste med normaliserede prisresultater.
-    """
     resultater: list[dict[str, Any]] = []
 
     for c in cards:
@@ -88,7 +58,6 @@ def udtraek_priser(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
         tcgplayer = c.get("tcgplayer", {})
         prices = tcgplayer.get("prices", {}) if isinstance(tcgplayer, dict) else {}
 
-        # Vi prøver nogle almindelige varianter: normal, holofoil, reverseHolofoil
         prisfelt = None
         for key in ["normal", "holofoil", "reverseHolofoil"]:
             if key in prices:
@@ -117,15 +86,6 @@ def udtraek_priser(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def scan_kort():
-    """
-    Kører interaktiv CLI-loop for manuelt prisopslag.
-
-    Brugeren kan indtaste et kortnavn, hvorefter programmet forsøger:
-    1) API-opslag i PokemonTCG
-    2) fallback til lokal eksempeldata ved netværksfejl
-
-    Loopet stopper ved tomt input.
-    """
     print("=== Pokémon Pris-Scanner (internet/API) ===")
     print("Skriv navnet på et Pokémon-kort (eller en del af navnet).")
     print("Tomt input lukker programmet.\n")
@@ -140,7 +100,6 @@ def scan_kort():
             cards = hent_kort_fra_api(kortnavn)
 
             if cards is None:
-                # API'et kunne ikke nås – vi bruger fallback-data
                 print("Kunne ikke få svar fra API'et (timeout/ingen forbindelse).")
                 print("Bruger indbyggede eksempelpriser i stedet.\n")
                 priser = [

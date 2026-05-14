@@ -20,7 +20,8 @@
         <form class="form" action="{{ url_for('pricing.lookup') }}" method="get">
           <label class="label" for="q">Søg igen</label>
           <div class="row">
-            <input id="q" name="q" class="input" value="{{ query }}" />
+            <input id="q" name="q" class="input" value="{{ query }}" placeholder="Kortnavn" />
+            <input id="set" name="set" class="input" value="{{ saet }}" placeholder="Sæt (valgfrit)" />
             <select id="currency" name="currency" class="select" aria-label="Vælg valuta">
               {% for code, sym in currencies.items() %}
                 <option value="{{ code }}" {% if code == currency %}selected{% endif %}>{{ code }} ({{ sym }})</option>
@@ -81,7 +82,19 @@
                         <span class="thumb-placeholder" aria-hidden="true"></span>
                       {% endif %}
                     </td>
-                    <td class="nowrap">{{ r.name }}</td>
+                    <td class="nowrap">
+                      {{ r.name }}<br />
+                      <a class="muted" style="font-size:0.8em;" href="{{ url_for('pricing.history', name=r.name, set=r.set) }}">Se historik</a>
+                      {% if current_user.is_authenticated %}
+                        <br />
+                        <form method="post" action="{{ url_for('alerts.create_alert') }}" style="display:inline-flex;gap:4px;margin-top:4px;">
+                          <input type="hidden" name="card_name" value="{{ r.name }}" />
+                          <input type="hidden" name="card_set" value="{{ r.set }}" />
+                          <input type="number" name="threshold_usd" step="0.01" min="0.01" placeholder="Alarm under $ (USD)" style="width:160px;font-size:0.8em;padding:2px 6px;" required />
+                          <button type="submit" class="button" style="font-size:0.8em;padding:2px 8px;">Opret alarm</button>
+                        </form>
+                      {% endif %}
+                    </td>
                     <td class="muted">{{ r.set }}</td>
                     <td>{{ r.market if r.market is not none else "—" }}</td>
                     <td>{{ r.low if r.low is not none else "—" }}</td>
@@ -121,6 +134,7 @@
         <span class="muted">
           {% if current_user.is_authenticated %}
             <a href="{{ url_for('auth.me') }}">Min side</a> —
+            <a href="{{ url_for('alerts.list_alerts') }}">Mine alarmer</a> —
             <a href="{{ url_for('auth.logout') }}">Log ud</a>
           {% else %}
             <a href="{{ url_for('auth.login') }}">Login</a> —

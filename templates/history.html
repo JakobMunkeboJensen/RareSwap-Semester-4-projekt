@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pris-historik – {{ name or "Pokémon pris-scanner" }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Pris-historik</h1>
+          {% if name %}
+            <p><strong>{{ name }}</strong>{% if card_set %} — {{ card_set }}{% endif %}</p>
+          {% else %}
+            <p>Søg efter et kort for at se historik.</p>
+          {% endif %}
+        </div>
+      </header>
+
+      <section class="card">
+        <form class="form" action="{{ url_for('pricing.history') }}" method="get">
+          <label class="label" for="name">Kortnavn</label>
+          <div class="row">
+            <input id="name" name="name" class="input" value="{{ name }}" placeholder="Fx Charizard" />
+            <button class="button" type="submit">Vis historik</button>
+            <a class="button secondary" href="{{ url_for('pricing.home') }}">Forside</a>
+          </div>
+        </form>
+      </section>
+
+      {% if name and not entries %}
+        <section class="card danger">
+          <p>Ingen historik fundet for <strong>{{ name }}</strong>. Søg på kortet først for at begynde at indsamle data.</p>
+        </section>
+      {% endif %}
+
+      {% if entries %}
+        <section class="card">
+          <h2>Prisudvikling (USD market-pris)</h2>
+          <canvas id="prisChart" style="max-height: 350px;"></canvas>
+        </section>
+
+        <section class="card">
+          <h2>Datapunkter ({{ entries|length }})</h2>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Tidspunkt</th>
+                  <th>Sæt</th>
+                  <th>Market (USD)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for e in entries|reverse %}
+                  <tr>
+                    <td class="nowrap">{{ e.recorded_at.strftime("%d/%m/%Y %H:%M") }}</td>
+                    <td class="muted">{{ e.card_set }}</td>
+                    <td>{{ "%.2f"|format(e.market_usd) if e.market_usd is not none else "—" }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+
+      <footer class="footer">
+        <span class="muted">
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('auth.me') }}">Min side</a> —
+            <a href="{{ url_for('auth.logout') }}">Log ud</a>
+          {% else %}
+            <a href="{{ url_for('auth.login') }}">Login</a> —
+            <a href="{{ url_for('auth.register') }}">Opret bruger</a>
+          {% endif %}
+        </span>
+      </footer>
+    </main>
+
+    {% if entries %}
+    <script>
+      const labels = {{ labels | tojson }};
+      const prices = {{ prices | tojson }};
+
+      new Chart(document.getElementById("prisChart"), {
+        type: "line",
+        data: {
+          labels: labels,
+          datasets: [{
+            label: "Market pris (USD)",
+            data: prices,
+            borderColor: "#e63946",
+            backgroundColor: "rgba(230, 57, 70, 0.1)",
+            borderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            tension: 0.3,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: ctx => "$" + (ctx.parsed.y != null ? ctx.parsed.y.toFixed(2) : "—")
+              }
+            }
+          },
+          scales: {
+            y: {
+              beginAtZero: false,
+              ticks: {
+                callback: val => "$" + val.toFixed(2)
+              }
+            }
+          }
+        }
+      });
+    </script>
+    {% endif %}
+  </body>
+</html>

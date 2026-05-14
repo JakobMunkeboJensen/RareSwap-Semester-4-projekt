@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mine pris-alarmer – Pokémon pris-scanner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="brand">
+        <div class="pokeball" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Mine pris-alarmer</h1>
+          <p>Du får en mail når et korts pris falder under din grænse.</p>
+        </div>
+      </header>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <section class="card {{ 'danger' if category == 'error' else 'success' if category == 'success' else '' }}">
+            <p>{{ message }}</p>
+          </section>
+        {% endfor %}
+      {% endwith %}
+
+      {% if not current_user.email %}
+        <section class="card danger">
+          <p>Du har ingen e-mail tilknyttet din konto — alarmer kan ikke sende mails. <a href="{{ url_for('auth.me') }}">Opdater din profil.</a></p>
+        </section>
+      {% endif %}
+
+      {% if alerts %}
+        <section class="card">
+          <h2>Aktive alarmer ({{ alerts|length }})</h2>
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Kort</th>
+                  <th>Sæt</th>
+                  <th>Alarm under (USD)</th>
+                  <th>Sidst udløst</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for a in alerts %}
+                  <tr>
+                    <td class="nowrap">
+                      <a href="{{ url_for('pricing.lookup', q=a.card_name, set=a.card_set) }}">{{ a.card_name }}</a>
+                    </td>
+                    <td class="muted">{{ a.card_set or "Alle sæt" }}</td>
+                    <td>${{ "%.2f"|format(a.threshold_usd) }}</td>
+                    <td class="muted">
+                      {{ a.last_triggered_at.strftime("%d/%m/%Y %H:%M") if a.last_triggered_at else "Aldrig" }}
+                    </td>
+                    <td>
+                      <form method="post" action="{{ url_for('alerts.delete_alert', alert_id=a.id) }}">
+                        <button class="button secondary" type="submit">Slet</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% else %}
+        <section class="card">
+          <p>Du har ingen aktive alarmer. Søg på et kort og opret en alarm derfra.</p>
+          <a class="button" href="{{ url_for('pricing.home') }}">Gå til søgning</a>
+        </section>
+      {% endif %}
+
+      <footer class="footer">
+        <span class="muted">
+          <a href="{{ url_for('pricing.home') }}">Forside</a> —
+          <a href="{{ url_for('auth.me') }}">Min side</a> —
+          <a href="{{ url_for('auth.logout') }}">Log ud</a>
+        </span>
+      </footer>
+    </main>
+  </body>
+</html>

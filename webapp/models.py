@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 
 from flask import Flask
 from flask_login import UserMixin
@@ -24,11 +25,27 @@ class User(db.Model, UserMixin):
         return check_password_hash(self.password_hash, password)
 
 
+class PriceAlert(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+    card_name = db.Column(db.String(200), nullable=False)
+    card_set = db.Column(db.String(200), nullable=False, default="")
+    threshold_usd = db.Column(db.Float, nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    last_triggered_at = db.Column(db.DateTime, nullable=True)
+    user = db.relationship("User", backref="price_alerts")
+
+
+class PriceHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    card_name = db.Column(db.String(200), nullable=False, index=True)
+    card_set = db.Column(db.String(200), nullable=False, default="")
+    market_usd = db.Column(db.Float, nullable=True)
+    recorded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+
 def ensure_sqlite_user_email_column(app: Flask) -> None:
-    """
-    Minimal migration for existing SQLite DB.
-    If the 'email' column is missing, we add it (nullable).
-    """
     try:
         uri = str(app.config.get("SQLALCHEMY_DATABASE_URI") or "")
         if not uri.startswith("sqlite:///"):

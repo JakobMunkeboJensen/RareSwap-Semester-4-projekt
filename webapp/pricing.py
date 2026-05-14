@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from collections import deque
+from datetime import datetime, timedelta
 from dataclasses import asdict, dataclass
 from typing import Any, TypedDict
 
@@ -11,6 +12,10 @@ import requests
 from flask import Blueprint, abort, jsonify, render_template, request
 
 from pokemon_pris_scanner import hent_kort_fra_api, udtraek_priser
+
+from .extensions import db
+from .mail import send_email
+from .models import PriceAlert, PriceHistory, User
 
 logger = logging.getLogger(__name__)
 
@@ -65,56 +70,26 @@ def _to_float(v: Any) -> float | None:
         return None
 
 
-def _get_usd_rates() -> dict[str, float]:
-    """
-    Henter valutakurser med base USD.
-    Best-effort: bruger cache, og falder tilbage til sidste kendte kurser.
-    """
+def _get_rates(base: str) -> dict[str, float]:
+    ts_key = f"ts_{base}"
+    rates_key = f"rates_{base}"
     now = time.time()
-    cached_ts = float(_rates_cache.get("ts") or 0.0)
-    cached_rates = _rates_cache.get("rates")
+    cached_ts = float(_rates_cache.get(ts_key) or 0.0)
+    cached_rates = _rates_cache.get(rates_key)
     if isinstance(cached_rates, dict) and (now - cached_ts) < _RATES_TTL_S:
         return {k: float(v) for k, v in cached_rates.items() if isinstance(v, (int, float))}
 
     try:
-        resp = requests.get("https://open.er-api.com/v6/latest/USD", timeout=6)
+        resp = requests.get(f"https://open.er-api.com/v6/latest/{base}", timeout=6)
         resp.raise_for_status()
         data = resp.json()
         rates = data.get("rates", {})
         if isinstance(rates, dict) and rates:
-            _rates_cache["ts"] = now
-            _rates_cache["rates"] = rates
+            _rates_cache[ts_key] = now
+            _rates_cache[rates_key] = rates
             return {k: float(v) for k, v in rates.items() if isinstance(v, (int, float))}
     except Exception:
-        logger.info("Could not refresh FX rates; using cached rates if any.")
-
-    if isinstance(cached_rates, dict):
-        return {k: float(v) for k, v in cached_rates.items() if isinstance(v, (int, float))}
-    return {}
-
-
-def _get_eur_rates() -> dict[str, float]:
-    """
-    Henter valutakurser med base EUR.
-    Best-effort: bruger cache, og falder tilbage til sidste kendte kurser.
-    """
-    now = time.time()
-    cached_ts = float(_rates_cache.get("ts_eur") or 0.0)
-    cached_rates = _rates_cache.get("rates_eur")
-    if isinstance(cached_rates, dict) and (now - cached_ts) < _RATES_TTL_S:
-        return {k: float(v) for k, v in cached_rates.items() if isinstance(v, (int, float))}
-
-    try:
-        resp = requests.get("https://open.er-api.com/v6/latest/EUR", timeout=6)
-        resp.raise_for_status()
-        data = resp.json()
-        rates = data.get("rates", {})
-        if isinstance(rates, dict) and rates:
-            _rates_cache["ts_eur"] = now
-            _rates_cache["rates_eur"] = rates
-            return {k: float(v) for k, v in rates.items() if isinstance(v, (int, float))}
-    except Exception:
-        logger.info("Could not refresh EUR FX rates; using cached rates if any.")
+        logger.info("Could not refresh %s FX rates; using cached rates if any.", base)
 
     if isinstance(cached_rates, dict):
         return {k: float(v) for k, v in cached_rates.items() if isinstance(v, (int, float))}
@@ -126,7 +101,7 @@ def _convert_from_eur(v_eur: float | None, currency: str) -> float | None:
         return None
     if currency == "EUR":
         return round(v_eur, 2)
-    rates = _get_eur_rates()
+    rates = _get_rates("EUR")
     fx = float(rates.get(currency) or 0.0)
     if fx <= 0:
         return None
@@ -139,7 +114,7 @@ def _convert_from_dkk(v_dkk: float | None, currency: str) -> float | None:
     if currency == "DKK":
         return round(v_dkk, 2)
     # Convert DKK -> EUR using EUR base rates (DKK per EUR), then EUR -> target
-    rates = _get_eur_rates()
+    rates = _get_rates("EUR")
     dkk_per_eur = float(rates.get("DKK") or 0.0)
     if dkk_per_eur <= 0:
         return None
@@ -162,10 +137,55 @@ def _lookup_cards_from_local_api(name: str) -> list[dict[str, Any]] | None:
     except Exception:
         return None
 
+
 def _convert(v_usd: float | None, fx: float) -> float | None:
     if v_usd is None:
         return None
     return round(v_usd * fx, 2)
+
+
+_ALERT_COOLDOWN = timedelta(hours=24)
+
+
+def _check_and_fire_alerts(card_name: str, card_set: str, market_usd: float) -> None:
+    now = datetime.utcnow()
+    try:
+        alerts = db.session.execute(
+            db.select(PriceAlert).where(
+                PriceAlert.card_name == card_name,
+                PriceAlert.card_set == card_set,
+                PriceAlert.is_active == True,
+                PriceAlert.threshold_usd >= market_usd,
+            )
+        ).scalars().all()
+    except Exception:
+        logger.exception("Could not query price alerts")
+        return
+
+    for alert in alerts:
+        if alert.last_triggered_at and (now - alert.last_triggered_at) < _ALERT_COOLDOWN:
+            continue
+        user = db.session.get(User, alert.user_id)
+        if user is None or not user.email:
+            continue
+        try:
+            body = (
+                f"Din pris-alarm for {card_name} ({card_set}) er udløst!\n\n"
+                f"Nuværende market-pris: ${market_usd:.2f} USD\n"
+                f"Din grænse: ${alert.threshold_usd:.2f} USD\n\n"
+                f"Se mere på sitet: /lookup?q={card_name}\n\n"
+                f"Du kan slette alarmen på /alerts."
+            )
+            send_email(user.email, f"Pris-alarm: {card_name}", body)
+            alert.last_triggered_at = now
+            logger.info("Fired price alert for %s to %s", card_name, user.email)
+        except Exception:
+            logger.exception("Failed to send price alert to %s", user.email)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 
 def _rate_limit_or_429() -> None:
@@ -208,8 +228,9 @@ def _pokemontcg_healthcheck(timeout_s: float = 4.0) -> tuple[bool, str]:
         return False, f"Fejl ({type(e).__name__})"
 
 
-def _lookup_prices(name_query: str, currency: str) -> LookupResult:
+def _lookup_prices(name_query: str, currency: str, saet: str = "") -> LookupResult:
     name_query = (name_query or "").strip()
+    saet = (saet or "").strip()
     currency = (currency or "USD").upper().strip()
     if currency not in SUPPORTED_CURRENCIES:
         currency = "USD"
@@ -290,7 +311,7 @@ def _lookup_prices(name_query: str, currency: str) -> LookupResult:
         }
 
     try:
-        cards = hent_kort_fra_api(name_query)
+        cards = hent_kort_fra_api(name_query, saet=saet)
     except Exception:
         logger.exception("Lookup failed for query=%r", name_query)
         return {
@@ -335,7 +356,7 @@ def _lookup_prices(name_query: str, currency: str) -> LookupResult:
 
     fx = 1.0
     if currency != "USD":
-        rates = _get_usd_rates()
+        rates = _get_rates("USD")
         fx = float(rates.get(currency) or 0.0)
         if fx <= 0:
             fx = 1.0
@@ -344,16 +365,20 @@ def _lookup_prices(name_query: str, currency: str) -> LookupResult:
             notice = "Kunne ikke hente valutakurs lige nu. Viser priser i USD."
 
     rows: list[PriceRow] = []
+    history_entries: list[PriceHistory] = []
     for r in priser:
         market_usd = _to_float(r.get("market"))
         low_usd = _to_float(r.get("low"))
         mid_usd = _to_float(r.get("mid"))
         high_usd = _to_float(r.get("high"))
 
+        card_name = str(r.get("name", ""))
+        card_set = str(r.get("set", ""))
+
         rows.append(
             PriceRow(
-                name=str(r.get("name", "")),
-                set=str(r.get("set", "")),
+                name=card_name,
+                set=card_set,
                 image_small=(str(r["image_small"]) if r.get("image_small") else None),
                 image_large=(str(r["image_large"]) if r.get("image_large") else None),
                 market=_convert(market_usd, fx),
@@ -362,6 +387,18 @@ def _lookup_prices(name_query: str, currency: str) -> LookupResult:
                 high=_convert(high_usd, fx),
             )
         )
+
+        if market_usd is not None:
+            history_entries.append(PriceHistory(card_name=card_name, card_set=card_set, market_usd=market_usd))
+            _check_and_fire_alerts(card_name, card_set, market_usd)
+
+    if history_entries:
+        try:
+            db.session.add_all(history_entries)
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            logger.exception("Could not save price history")
 
     return {
         "query": name_query,
@@ -383,8 +420,9 @@ def lookup():
     _rate_limit_or_429()
     q = request.args.get("q", "")
     currency = request.args.get("currency", "USD")
-    result = _lookup_prices(q, currency=currency)
-    return render_template("results.html", **result, currencies=SUPPORTED_CURRENCIES)
+    saet = request.args.get("set", "")
+    result = _lookup_prices(q, currency=currency, saet=saet)
+    return render_template("results.html", **result, currencies=SUPPORTED_CURRENCIES, saet=saet)
 
 
 @bp.get("/api/lookup")
@@ -392,7 +430,8 @@ def api_lookup():
     _rate_limit_or_429()
     q = request.args.get("q", "")
     currency = request.args.get("currency", "USD")
-    result = _lookup_prices(q, currency=currency)
+    saet = request.args.get("set", "")
+    result = _lookup_prices(q, currency=currency, saet=saet)
     return jsonify(
         {
             "query": result["query"],
@@ -403,15 +442,35 @@ def api_lookup():
     )
 
 
+@bp.get("/history")
+def history():
+    name = (request.args.get("name") or "").strip()
+    card_set = (request.args.get("set") or "").strip()
+
+    if not name:
+        return render_template("history.html", name="", card_set="", entries=[], labels=[], prices=[])
+
+    query = db.select(PriceHistory).where(PriceHistory.card_name == name)
+    if card_set:
+        query = query.where(PriceHistory.card_set == card_set)
+    query = query.order_by(PriceHistory.recorded_at.asc()).limit(100)
+
+    entries = db.session.execute(query).scalars().all()
+    labels = [e.recorded_at.strftime("%d/%m %H:%M") for e in entries]
+    prices = [e.market_usd for e in entries]
+
+    return render_template("history.html", name=name, card_set=card_set, entries=entries, labels=labels, prices=prices)
+
+
 @bp.get("/status")
 def status():
     _rate_limit_or_429()
     api_ok, api_msg = _pokemontcg_healthcheck()
 
     now = time.time()
-    ts = float(_rates_cache.get("ts") or 0.0)
+    ts = float(_rates_cache.get("ts_USD") or 0.0)
     age_s = max(0.0, now - ts) if ts else None
-    cached_rates = _rates_cache.get("rates")
+    cached_rates = _rates_cache.get("rates_USD")
     have_rates = isinstance(cached_rates, dict) and bool(cached_rates)
     fx_ok = have_rates
     fx_msg = "Ingen kurser cached endnu."

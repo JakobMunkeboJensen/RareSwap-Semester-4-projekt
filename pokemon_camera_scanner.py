@@ -1,13 +1,3 @@
-"""
-Scan Pokemon-kort med Raspberry Pi kamera:
-1) tag foto (kortet skal fylde en stor del af billedet)
-2) find kortets omrids (heuristisk) + perspektiv-retning
-3) OCR kortnavn (øvre del af kortet)
-4) slå priser op via PokemonTCG.io API
-
-Bemærk: OCR og kant-detektion er heuristiske og afhænger af lys, vinkel og afstand.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -81,34 +71,30 @@ def _four_point_transform(image: np.ndarray, pts: np.ndarray) -> np.ndarray:
     rect = _order_points(pts)
     (tl, tr, br, bl) = rect
 
-    widthA = np.linalg.norm(br - bl)
-    widthB = np.linalg.norm(tr - tl)
-    maxWidth = int(max(widthA, widthB))
+    width_a = np.linalg.norm(br - bl)
+    width_b = np.linalg.norm(tr - tl)
+    max_width = int(max(width_a, width_b))
 
-    heightA = np.linalg.norm(tr - br)
-    heightB = np.linalg.norm(tl - bl)
-    maxHeight = int(max(heightA, heightB))
+    height_a = np.linalg.norm(tr - br)
+    height_b = np.linalg.norm(tl - bl)
+    max_height = int(max(height_a, height_b))
 
     dst = np.array(
         [
             [0, 0],
-            [maxWidth - 1, 0],
-            [maxWidth - 1, maxHeight - 1],
-            [0, maxHeight - 1],
+            [max_width - 1, 0],
+            [max_width - 1, max_height - 1],
+            [0, max_height - 1],
         ],
         dtype="float32",
     )
 
-    M = cv2.getPerspectiveTransform(rect, dst)
-    warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+    transform = cv2.getPerspectiveTransform(rect, dst)
+    warped = cv2.warpPerspective(image, transform, (max_width, max_height))
     return warped
 
 
 def _detect_card_quad(frame: np.ndarray) -> np.ndarray | None:
-    """
-    Finder en 4-punkts kontur der ligner kortets omrids.
-    Kræver typisk at kortet er relativt stort og ikke for “skævt”.
-    """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
 
@@ -142,21 +128,16 @@ def _detect_card_quad(frame: np.ndarray) -> np.ndarray | None:
 
 
 def _preprocess_roi_for_ocr(roi_gray: np.ndarray) -> np.ndarray:
-    # Forbedrer kontrast/tekst for tesseract.
     roi = cv2.resize(roi_gray, None, fx=2.0, fy=2.0, interpolation=cv2.INTER_CUBIC)
     roi = cv2.bilateralFilter(roi, 9, 75, 75)
 
     _, th = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    # Hvis baggrund dominerer, vend billedet.
-    if th.mean() < 127:
+    if th.mean() < 127:  # mørk baggrund dominerer — inverter
         th = 255 - th
     return th
 
 
 def _ocr_card_name(warped_image: np.ndarray) -> str:
-    """
-    OCR'er kortnavn fra den øverste del af kortet.
-    """
     h, w = warped_image.shape[:2]
     if h < 100 or w < 100:
         return ""
@@ -178,7 +159,7 @@ def _ocr_card_name(warped_image: np.ndarray) -> str:
         return ""
 
     def score(line: str) -> int:
-        # Væg tekst højt (OCR-støj har ofte færre bogstaver).
+        # OCR-støj har typisk færre bogstaver end rigtigt tekst
         return sum(1 for c in line if c.isalpha()) + 2 * sum(1 for c in line if c.isdigit())
 
     best = max(lines, key=score)
@@ -252,19 +233,12 @@ def _print_priser_for_kortnavn(kortnavn: str) -> None:
 
 
 def _sharpness_score(img_bgr: np.ndarray) -> float:
-    """
-    Simpel skarpheds-score (variance of Laplacian).
-    Højere = typisk skarpere billede.
-    """
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
 def _capture_best_of_n(camera_index: int, n: int, show_window: bool) -> np.ndarray:
-    """
-    Fanger N frames og vælger den skarpeste.
-    Hjælper meget på Pi/USB-kamera hvor første frame ofte er “blød”.
-    """
+    # Pi/USB-kameraers første frame er ofte sløret — tag N og vælg den skarpeste
     _tjek_afhaengigheder()
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -285,7 +259,6 @@ def _capture_best_of_n(camera_index: int, n: int, show_window: bool) -> np.ndarr
             cv2.imshow("Pokemon kort scan - tryk c", f)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("c"):
-                # fang n frames hurtigt
                 for _ in range(max(1, n)):
                     ok2, f2 = cap.read()
                     if not ok2:
@@ -319,10 +292,6 @@ def _name_similarity(a: str, b: str) -> float:
 
 
 def _rank_cards_by_name(cards: list[dict], query: str) -> list[dict]:
-    """
-    Sorterer API-kort efter hvor godt de matcher query.
-    Robust mod små OCR-fejl (stavning/ekstra tegn).
-    """
     scored: list[tuple[float, dict]] = []
     qn = normaliser_kortnavn(query) or query
     for c in cards:
@@ -337,10 +306,6 @@ def _rank_cards_by_name(cards: list[dict], query: str) -> list[dict]:
 
 
 def _choose_best_match(cards: list[dict], query: str) -> dict | None:
-    """
-    Printer top matches og lader bruger vælge.
-    Returnerer valgt kort (dict) eller None.
-    """
     ranked = _rank_cards_by_name(cards, query)[:5]
     if not ranked:
         return None
@@ -367,7 +332,6 @@ def _choose_best_match(cards: list[dict], query: str) -> dict | None:
 
 
 def scan_kort_med_kamera(camera_index: int, show_window: bool) -> None:
-    # Vælg skarpeste frame for bedre OCR/kant-detektion.
     frame = _capture_best_of_n(camera_index=camera_index, n=8, show_window=show_window)
     quad = _detect_card_quad(frame)
     if quad is None:
@@ -395,12 +359,8 @@ def scan_kort_med_kamera(camera_index: int, show_window: bool) -> None:
     if not query:
         return
 
-    # Robust match-flow:
-    # 1) slå op i API med query (navn-søgning)
-    # 2) lad bruger vælge bedste kort blandt top matches
     cards = hent_kort_fra_api(query)
     if cards is None:
-        # Netværk nede -> fallback
         _print_priser_for_kortnavn(query)
         return
     if not cards and normaliser_kortnavn(query) and normaliser_kortnavn(query).lower() != query.lower():

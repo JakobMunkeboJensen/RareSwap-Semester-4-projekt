@@ -7,7 +7,6 @@ from typing import Any
 import requests
 from flask import Flask, jsonify, request
 
-# Simpel "database" med Pokémon-kort og priser
 POKEMON_KORT = [
     {"name": "Charizard", "set": "Base Set", "price_dkk": 2500.0},
     {"name": "Charizard Holo", "set": "Base Set 2", "price_dkk": 1800.0},
@@ -211,10 +210,6 @@ def _eur_to_dkk(eur: float | None) -> float | None:
 
 
 def _normalize_local_card(c: dict[str, Any]) -> dict[str, Any]:
-    """
-    Ensures a consistent response shape.
-    Local cards may not have images or EUR prices.
-    """
     out = dict(c)
     if "price_eur" not in out:
         out["price_eur"] = None
@@ -226,10 +221,6 @@ def _normalize_local_card(c: dict[str, Any]) -> dict[str, Any]:
 
 
 def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict[str, Any]]:
-    """
-    Live lookup via PokemonTCG.io v2.
-    We prefer Cardmarket (EUR) prices when available.
-    """
     q = (name or "").strip()
     if not q:
         return []
@@ -260,7 +251,6 @@ def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict
         images = it.get("images") if isinstance(it.get("images"), dict) else {}
         image_url = images.get("small") or images.get("large")
 
-        # Cardmarket EUR: cardmarket.prices.averageSellPrice (best effort)
         cm = it.get("cardmarket") if isinstance(it.get("cardmarket"), dict) else {}
         prices = cm.get("prices") if isinstance(cm.get("prices"), dict) else {}
         eur = prices.get("averageSellPrice")
@@ -281,11 +271,6 @@ def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict
 
 @app.get("/cards")
 def get_cards():
-    """
-    HTTP GET /cards?name=Pikachu
-    Returnerer en liste af kort, der matcher navnet (case-insensitive).
-    Hvis 'name' ikke er angivet, returneres alle kort.
-    """
     name_query = request.args.get("name", "").lower()
 
     if not name_query:
@@ -305,10 +290,6 @@ def get_cards():
 
 @app.get("/cards/<name>")
 def get_single_card(name: str):
-    """
-    HTTP GET /cards/Charizard
-    Returnerer den første matchende Charizard (eller 404, hvis ingen).
-    """
     name_lower = name.lower()
 
     try:

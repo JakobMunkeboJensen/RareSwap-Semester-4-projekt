@@ -5,6 +5,7 @@ import os
 
 from flask import Flask, jsonify, render_template, request
 
+from .alerts import bp as alerts_bp
 from .auth import bp as auth_bp
 from .extensions import db, login_manager
 from .models import User, ensure_sqlite_user_email_column
@@ -46,7 +47,7 @@ def create_app() -> Flask:
     def load_user(user_id: str) -> User | None:
         try:
             uid = int(user_id)
-        except Exception:
+        except ValueError:
             return None
         return db.session.get(User, uid)
 
@@ -75,6 +76,7 @@ def create_app() -> Flask:
     # Blueprints
     app.register_blueprint(pricing_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(alerts_bp)
 
     # DB init (dev-friendly)
     with app.app_context():
