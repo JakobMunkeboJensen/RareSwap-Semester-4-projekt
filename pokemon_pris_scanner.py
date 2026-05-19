@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import requests
 
+logger = logging.getLogger(__name__)
+
 API_URL = "https://api.pokemontcg.io/v2/cards"
 _DEFAULT_TIMEOUT_S = 20.0
 
-# Offline fallback used when the API is unreachable
+# Offline-fallback der bruges når API'et ikke er tilgængeligt
 FALLBACK_KORT = [
     {"name": "Charizard", "set": "Base Set", "market": 2500, "low": 2000, "mid": 2600, "high": 3000},
     {"name": "Pikachu", "set": "Base Set", "market": 50, "low": 30, "mid": 60, "high": 80},
@@ -21,18 +24,23 @@ _session.headers.update({"User-Agent": "pokemon-pris-scanner/1.0"})
 
 
 def hent_kort_fra_api(
-    kortnavn: str, *, saet: str = "", timeout_s: float = _DEFAULT_TIMEOUT_S
+    kortnavn: str, *, saet: str = "", nummer: str = "", timeout_s: float = _DEFAULT_TIMEOUT_S
 ) -> list[dict[str, Any]] | None:
     """Søg i PokemonTCG API; returner None ved timeout eller forbindelsesfejl."""
     q = f'name:"{kortnavn}"'
     if saet:
-        q += f' set.name:"{saet}"'
+        saet_clean = saet.removeprefix("EX ").removeprefix("ex ").strip()
+        first_word = saet_clean.split()[0] if saet_clean else ""
+        if first_word:
+            q += f" set.name:{first_word}"
+    if nummer:
+        q += f" number:{nummer}"
     params = {
         "q": q,
         "pageSize": 30,
     }
 
-    print(f"Søger i PokemonTCG API efter: {kortnavn}" + (f" (sæt: {saet})" if saet else ""))
+    logger.info("Søger i PokemonTCG API efter: %s%s", kortnavn, f" (sæt: {saet})" if saet else "")
     try:
         resp = _session.get(API_URL, params=params, timeout=timeout_s)
         resp.raise_for_status()

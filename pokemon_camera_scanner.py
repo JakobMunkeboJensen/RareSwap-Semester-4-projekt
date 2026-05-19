@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import re
 from collections.abc import Sequence
 from difflib import SequenceMatcher
 
 from pokemon_pris_scanner import FALLBACK_KORT, hent_kort_fra_api, udtraek_priser
+
+logger = logging.getLogger(__name__)
 
 try:
     import cv2  # type: ignore
@@ -178,6 +181,7 @@ def _ocr_card_name(warped_image: np.ndarray) -> str:
 
 
 def _capture_one_frame(camera_index: int, show_window: bool) -> np.ndarray:
+    """Tag ét enkelt billede fra kameraet og returner det som numpy-array."""
     _tjek_afhaengigheder()
 
     cap = cv2.VideoCapture(camera_index)
@@ -214,6 +218,7 @@ def _capture_one_frame(camera_index: int, show_window: bool) -> np.ndarray:
 
 
 def _print_priser_for_kortnavn(kortnavn: str) -> None:
+    """Slå kortnavnet op i API'et og udskriv fundne priser; bruger fallback-data ved fejl."""
     cards = hent_kort_fra_api(kortnavn)
     if cards is None:
         print("Kunne ikke nå PokemonTCG API (ingen internet/timeout).")
@@ -248,7 +253,7 @@ def _sharpness_score(img_bgr: np.ndarray) -> float:
 
 
 def _capture_best_of_n(camera_index: int, n: int, show_window: bool) -> np.ndarray:
-    # Pi/USB-kameraers første frame er ofte sløret — tag N og vælg den skarpeste
+    """Tag N billeder og returner det skarpeste; Pi/USB-kameraers første frame er ofte sløret."""
     _tjek_afhaengigheder()
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened():
@@ -318,6 +323,7 @@ def _rank_cards_by_name(cards: list[dict], query: str) -> list[dict]:
 
 
 def _choose_best_match(cards: list[dict], query: str) -> dict | None:
+    """Vis de fem bedste matches og lad brugeren vælge; returner det valgte kort eller None."""
     ranked = _rank_cards_by_name(cards, query)[:5]
     if not ranked:
         return None

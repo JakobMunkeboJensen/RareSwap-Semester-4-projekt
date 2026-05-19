@@ -31,10 +31,14 @@ def send_email(to_email: str, subject: str, body: str) -> None:
     msg["Subject"] = subject
     msg.set_content(body)
 
-    with smtplib.SMTP(host, port, timeout=10) as s:
-        if use_tls:
-            s.starttls()
-        if user:
-            s.login(user, password)
-        s.send_message(msg)
+    try:
+        with smtplib.SMTP(host, port, timeout=10) as s:
+            if use_tls:
+                s.starttls()
+            if user:
+                s.login(user, password)
+            s.send_message(msg)
+    except Exception:
+        logger.exception("SMTP-fejl ved afsendelse til %s", to_email)
+        raise
 

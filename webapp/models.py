@@ -24,7 +24,7 @@ class User(db.Model, UserMixin):
 
     def set_password(self, password: str) -> None:
         """Hash og gem den givne adgangskode i klartekst."""
-        self.password_hash = generate_password_hash(password)
+        self.password_hash = generate_password_hash(password, method="pbkdf2:sha256")
 
     def check_password(self, password: str) -> bool:
         """Returner True hvis adgangskoden matcher det gemte hash."""

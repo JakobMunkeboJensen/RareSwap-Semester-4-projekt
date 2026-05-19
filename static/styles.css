@@ -396,6 +396,75 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
+.section-title {
+  margin: 0 0 14px 0;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.divider-label {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin: 4px 0;
+  position: relative;
+}
+
+.divider-label::before,
+.divider-label::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 42%;
+  height: 1px;
+  background: var(--border);
+}
+
+.divider-label::before { left: 0; }
+.divider-label::after  { right: 0; }
+
+.scanner-steps {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  flex: 1 1 0;
+  min-width: 120px;
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.12);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.step-num {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--poke-blue);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.scan-btn {
+  background: linear-gradient(180deg, rgba(37,99,235,0.98), rgba(29,78,216,0.98));
+  box-shadow: 0 10px 22px rgba(37,99,235,0.22);
+}
+
 .webcam-title {
   margin: 0 0 8px 0;
   font-size: 18px;
@@ -403,6 +472,7 @@ code {
 }
 
 .webcam-preview-wrap {
+  position: relative;
   margin-top: 12px;
   border-radius: 14px;
   overflow: hidden;
@@ -410,6 +480,7 @@ code {
   background: #0b1220;
   max-width: 560px;
 }
+
 
 .webcam-video {
   display: block;

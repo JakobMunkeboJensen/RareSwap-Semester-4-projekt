@@ -3,50 +3,55 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Pokémon pris-scanner</title>
+    <title>RareSwap – Pokémon kortpriser</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}" />
+    <meta name="theme-color" content="#ef4444" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="RareSwap" />
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   </head>
   <body>
     <main class="container">
       <header class="brand">
         <div class="pokeball" aria-hidden="true"></div>
         <div class="brand-text">
-          <h1>Pokémon pris-scanner</h1>
-          <p>Søg på kortnavn og se prisfelter fra PokemonTCG.io.</p>
+          <h1>RareSwap</h1>
+          <p>Find prisen på dit Pokémon-kort på sekunder</p>
         </div>
       </header>
 
       <section class="card">
+        <h2 class="section-title">🔍 Søg på kortnavn</h2>
         <form class="form" action="{{ url_for('pricing.lookup') }}" method="get">
-          <label class="label" for="q">Kortnavn</label>
-          <div class=”row”>
+          <div class="row">
             <input
-              id=”q”
-              name=”q”
-              class=”input”
-              placeholder=”Fx Charizard”
-              autocomplete=”off”
+              id="q"
+              name="q"
+              class="input"
+              placeholder="Fx Charizard"
+              autocomplete="off"
               required
             />
             <input
-              id=”set”
-              name=”set”
-              class=”input”
-              placeholder=”Sæt (valgfrit, fx Base Set)”
-              autocomplete=”off”
+              id="set"
+              name="set"
+              class="input"
+              placeholder="Sæt (valgfrit)"
+              autocomplete="off"
             />
-            <select id=”currency” name=”currency” class=”select” aria-label=”Vælg valuta”>
+            <select id="currency" name="currency" class="select" aria-label="Vælg valuta">
               {% for code, sym in currencies.items() %}
-                <option value=”{{ code }}” {% if code == currency %}selected{% endif %}>{{ code }} ({{ sym }})</option>
+                <option value="{{ code }}" {% if code == currency %}selected{% endif %}>{{ code }} ({{ sym }})</option>
               {% endfor %}
             </select>
-            <button class=”button” type=”submit”>Søg</button>
+            <button class="button" type="submit">Søg</button>
           </div>
-          <p class=”hint”>
-            Tip: Skriv sætnavn for at finde et specifikt kort (fx “Charmander” + “EX FireRed &amp; LeafGreen”). Uden sæt vises op til 30 resultater.
-          </p>
+          <p class="hint">Tilføj sætnavn for at finde et specifikt kort — fx "Charmander" + "FireRed &amp; LeafGreen"</p>
         </form>
       </section>
+
+      <div class="divider-label">eller</div>
 
       {% include "_webcam_scanner.html" %}
 
@@ -60,10 +65,13 @@
             <a href="{{ url_for('auth.login') }}">Login</a> —
             <a href="{{ url_for('auth.register') }}">Opret bruger</a>
           {% endif %}
-          <span style="margin-left: 10px;">API: PokemonTCG.io</span>
         </span>
       </footer>
     </main>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/static/sw.js");
+      }
+    </script>
   </body>
 </html>
-

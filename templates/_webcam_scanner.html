@@ -1,9 +1,19 @@
-<section class="card webcam-card" data-webcam-scanner data-scanner-target="#q" aria-label="Scan med webcam">
-  <h2 class="webcam-title">Scan med webcam</h2>
-  <p class="hint">
-    Hold kortet så <strong>navnet er øverst</strong> i billedet (samme princip som Pi-scanneren). Undgå skarpt genskin;
-    første OCR-kørsel downloader sprogdata og kan tage lidt tid.
-  </p>
+<section class="card webcam-card" data-webcam-scanner data-scanner-target="input[name='q']" aria-label="Scan med webcam">
+  <h2 class="section-title">📷 Scan dit kort</h2>
+  <div class="scanner-steps">
+    <div class="step" data-step="1">
+      <span class="step-num">1</span>
+      <span>Tryk <strong>Start kamera</strong></span>
+    </div>
+    <div class="step" data-step="2">
+      <span class="step-num">2</span>
+      <span>Hold kortet op foran kameraet</span>
+    </div>
+    <div class="step" data-step="3">
+      <span class="step-num">3</span>
+      <span>Tryk <strong>Scan kort</strong> — AI finder prisen</span>
+    </div>
+  </div>
   <div class="webcam-preview-wrap">
     <video
       class="webcam-video"
@@ -14,11 +24,18 @@
     ></video>
   </div>
   <div class="row webcam-actions">
-    <button type="button" class="button secondary" data-webcam-start>Start webcam</button>
-    <button type="button" class="button" data-webcam-capture disabled>Fang og læs navn</button>
-    <button type="button" class="button secondary" data-webcam-stop disabled>Stop webcam</button>
+    <button type="button" class="button" data-webcam-start>Start kamera</button>
+    <button type="button" class="button scan-btn" data-webcam-capture disabled>Scan kort</button>
+    <button type="button" class="button secondary" data-webcam-stop disabled>Stop</button>
   </div>
   <p class="webcam-status muted" data-webcam-status role="status"></p>
+  <div class="webcam-confirm" data-webcam-confirm hidden>
+    <p class="confirm-label">AI fandt: <strong data-webcam-found-name></strong><span class="muted" data-webcam-found-set></span></p>
+    <div class="row webcam-confirm-actions">
+      <button type="button" class="button" data-webcam-confirm-set>Søg med sæt</button>
+      <button type="button" class="button secondary" data-webcam-confirm-name>Søg alle versioner</button>
+    </div>
+  </div>
   <canvas data-webcam-canvas-full hidden></canvas>
   <canvas data-webcam-canvas-crop hidden></canvas>
 </section>

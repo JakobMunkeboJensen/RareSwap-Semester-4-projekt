@@ -57,6 +57,7 @@
                     </td>
                     <td>
                       <form method="post" action="{{ url_for('alerts.delete_alert', alert_id=a.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                         <button class="button secondary" type="submit">Slet</button>
                       </form>
                     </td>

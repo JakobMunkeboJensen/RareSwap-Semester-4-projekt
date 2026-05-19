@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from typing import Any
 
 import requests
 from flask import Flask, jsonify, request
+
+logger = logging.getLogger(__name__)
 
 POKEMON_KORT = [
     {"name": "Charizard", "set": "Base Set", "price_dkk": 2500.0},
@@ -199,11 +202,12 @@ def _get_eur_to_dkk_rate() -> float | None:
             v = rates2.get("DKK")
             return float(v) if isinstance(v, (int, float)) else None
     except Exception:
-        pass
+        logger.exception("Fejl ved hentning af EUR→DKK valutakurs")
     return None
 
 
 def _eur_to_dkk(eur: float | None) -> float | None:
+    """Konverter EUR til DKK via cachet valutakurs; returner None hvis kursen mangler."""
     if eur is None:
         return None
     fx = _get_eur_to_dkk_rate()
@@ -213,6 +217,7 @@ def _eur_to_dkk(eur: float | None) -> float | None:
 
 
 def _normalize_local_card(c: dict[str, Any]) -> dict[str, Any]:
+    """Normaliser et lokalt kortdict så det altid har felterne price_eur, price_dkk og image_url."""
     out = dict(c)
     if "price_eur" not in out:
         out["price_eur"] = None
@@ -233,14 +238,18 @@ def fetch_cards_from_pokemontcg(name: str, timeout_s: float = 10.0) -> list[dict
     if POKEMONTCG_API_KEY:
         headers["X-Api-Key"] = POKEMONTCG_API_KEY
 
-    resp = requests.get(
-        "https://api.pokemontcg.io/v2/cards",
-        params={"q": f'name:"{q}"', "pageSize": 12},
-        headers=headers,
-        timeout=timeout_s,
-    )
-    resp.raise_for_status()
-    data = resp.json()
+    try:
+        resp = requests.get(
+            "https://api.pokemontcg.io/v2/cards",
+            params={"q": f'name:"{q}"', "pageSize": 12},
+            headers=headers,
+            timeout=timeout_s,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except requests.RequestException:
+        logger.exception("Fejl ved opslag i PokemonTCG.io for %r", q)
+        return []
     cards = data.get("data", [])
     if not isinstance(cards, list):
         return []
@@ -279,6 +288,7 @@ def get_cards():
     name_query = request.args.get("name", "").lower()
 
     if not name_query:
+        # Intet søgenavn — returner hele den lokale liste uden live-opslag
         return jsonify([_normalize_local_card(c) for c in POKEMON_KORT])
 
     try:
@@ -286,8 +296,9 @@ def get_cards():
         if live:
             return jsonify(live)
     except Exception:
-        pass
+        logger.exception("Live API-opslag fejlede for %r", name_query)
 
+    # Fallback: live API fejlede eller returnerede ingenting — søg i den lokale liste
     matches = [c for c in POKEMON_KORT if name_query in c["name"].lower()]
     return jsonify([_normalize_local_card(c) for c in matches])
 
@@ -302,8 +313,9 @@ def get_single_card(name: str):
         if live:
             return jsonify(live[0])
     except Exception:
-        pass
+        logger.exception("Live API-opslag fejlede for enkelt kort %r", name)
 
+    # Fallback: live API fejlede eller returnerede ingenting — søg i den lokale liste
     for c in POKEMON_KORT:
         if name_lower in c["name"].lower():
             return jsonify(_normalize_local_card(c))

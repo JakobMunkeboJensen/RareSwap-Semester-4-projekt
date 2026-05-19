@@ -9,7 +9,7 @@ from flask import Flask, jsonify, render_template, request
 
 from .alerts import bp as alerts_bp
 from .auth import bp as auth_bp
-from .extensions import db, login_manager
+from .extensions import csrf, db, login_manager
 from .models import User, ensure_sqlite_user_email_column
 from .pricing import bp as pricing_bp
 
@@ -40,6 +40,7 @@ def create_app() -> Flask:
     app.config["SMTP_TLS"] = os.getenv("SMTP_TLS", "1") not in {"0", "false", "False"}
 
     db.init_app(app)
+    csrf.init_app(app)
     login_manager.login_view = "auth.login"
     login_manager.init_app(app)
 

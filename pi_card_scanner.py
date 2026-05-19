@@ -1,15 +1,8 @@
-"""
-Raspberry Pi (Pi 5) Pokémon-kort scanner (MVP):
-
-- Tager et billede fra Pi-kamera (Picamera2)
-- Beskærer et "navnebånd" øverst i billedet (kan justeres)
-- Kører OCR (Tesseract) for at gætte kortnavn
-- Slår navnet op i et API (placeholder, nemt at skifte senere)
-- Printer resultat i terminal
-"""
+"""Raspberry Pi 5 Pokémon-kort scanner: Picamera2-billede, OCR på navnebånd og API-opslag."""
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import time
@@ -24,6 +17,8 @@ from picamera2 import Picamera2
 # Standard API-endpoint.
 # Under udvikling kan du køre dit lokale Flask API (pokemon_api.py) på Pi'en
 # og bruge http://127.0.0.1:5000/cards?name=<kortnavn>
+logger = logging.getLogger(__name__)
+
 API_BASE_URL = os.getenv("POKEMON_API_BASE_URL", "http://127.0.0.1:5000")
 API_SEARCH_PATH = os.getenv("POKEMON_API_SEARCH_PATH", "/cards")
 
@@ -35,12 +30,7 @@ def _capture_frame(picam2: Picamera2) -> np.ndarray:
 
 
 def _crop_name_band(img_bgr: np.ndarray) -> np.ndarray:
-    """
-    Antagelse: kortet ligger nogenlunde lige på bordet.
-    Vi tager den øverste del af billedet, hvor navnet typisk står.
-
-    Justér procenterne hvis du ser for meget støj eller for lidt af navnet.
-    """
+    """Beskær navnebåndet øverst i billedet (ca. 2–22% af højden); juster ved behov."""
     h, w = img_bgr.shape[:2]
     y0 = int(h * 0.02)
     y1 = int(h * 0.22)
@@ -73,21 +63,17 @@ def _ocr_name(img_bin: np.ndarray) -> str:
 
 
 def lookup_cards_from_api(name: str, timeout_s: float = 10.0) -> list[dict[str, Any]]:
-    """
-    Placeholder API-opslag.
-
-    Default matcher dit lokale Flask API i `pokemon_api.py`:
-      GET {API_BASE_URL}/cards?name=<name>  ->  JSON liste
-
-    Når du får et rigtigt API-link, kan du:
-    - ændre POKEMON_API_BASE_URL env var, eller
-    - ændre denne funktion til at matche det nye format.
-    """
+    """Slå kortnavnet op i det konfigurerede Flask API og returner en liste af kortdicts."""
     url = f"{API_BASE_URL.rstrip('/')}{API_SEARCH_PATH}"
-    resp = requests.get(url, params={"name": name}, timeout=timeout_s)
-    resp.raise_for_status()
-    data = resp.json()
-    return data if isinstance(data, list) else []
+    try:
+        resp = requests.get(url, params={"name": name}, timeout=timeout_s)
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, list) else []
+    except requests.HTTPError as exc:
+        raise requests.HTTPError(f"API returnerede fejl: {exc}") from exc
+    except requests.RequestException as exc:
+        raise requests.RequestException(f"Netværksfejl ved opslag: {exc}") from exc
 
 
 def main() -> None:

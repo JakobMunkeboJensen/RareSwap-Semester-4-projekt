@@ -15,7 +15,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 
 from pokemon_pris_scanner import hent_kort_fra_api, udtraek_priser
 
-from .extensions import db
+from .extensions import csrf, db
 from .mail import send_email
 from .models import PriceAlert, PriceHistory, User
 
@@ -101,6 +101,7 @@ def _get_rates(base: str) -> dict[str, float]:
 
 
 def _convert_from_eur(v_eur: float | None, currency: str) -> float | None:
+    """Konverter en EUR-pris til den ønskede valuta via cachet kurs; returner None ved manglende kurs."""
     if v_eur is None:
         return None
     if currency == "EUR":
@@ -113,11 +114,12 @@ def _convert_from_eur(v_eur: float | None, currency: str) -> float | None:
 
 
 def _convert_from_dkk(v_dkk: float | None, currency: str) -> float | None:
+    """Konverter en DKK-pris til den ønskede valuta via EUR-base-kurs; returner None ved manglende kurs."""
     if v_dkk is None:
         return None
     if currency == "DKK":
         return round(v_dkk, 2)
-    # Convert DKK -> EUR using EUR base rates (DKK per EUR), then EUR -> target
+    # DKK -> EUR via EUR-basekurser (DKK pr. EUR), derefter EUR -> målvaluta
     rates = _get_rates("EUR")
     dkk_per_eur = float(rates.get("DKK") or 0.0)
     if dkk_per_eur <= 0:
@@ -127,11 +129,7 @@ def _convert_from_dkk(v_dkk: float | None, currency: str) -> float | None:
 
 
 def _lookup_cards_from_local_api(name: str) -> list[dict[str, Any]] | None:
-    """
-    Uses the local `pokemon_api.py` service:
-      GET http://127.0.0.1:5000/cards?name=<name>
-    Returns list[dict] or None on connectivity issues.
-    """
+    """Hent kort fra den lokale pokemon_api.py-service; returner None ved forbindelsesfejl."""
     base = LOCAL_CARD_API_BASE_URL.rstrip("/")
     try:
         resp = requests.get(f"{base}/cards", params={"name": name}, timeout=8)
@@ -143,6 +141,7 @@ def _lookup_cards_from_local_api(name: str) -> list[dict[str, Any]] | None:
 
 
 def _convert(v_usd: float | None, fx: float) -> float | None:
+    """Gang en USD-pris med valutakursen og afrund til to decimaler; returner None for None-input."""
     if v_usd is None:
         return None
     return round(v_usd * fx, 2)
@@ -152,6 +151,7 @@ _ALERT_COOLDOWN = timedelta(hours=24)
 
 
 def _check_and_fire_alerts(card_name: str, card_set: str, market_usd: float) -> None:
+    """Tjek alle aktive alarmer for kortet og send e-mail til brugere hvis grænsen er nået."""
     now = datetime.utcnow()
     try:
         alerts = db.session.execute(
@@ -235,6 +235,7 @@ def _pokemontcg_healthcheck(timeout_s: float = 4.0) -> tuple[bool, str]:
 
 
 def _lookup_prices(name_query: str, currency: str, saet: str = "") -> LookupResult:
+    """Slå kortpriser op via PokemonTCG API eller lokal API og returner et LookupResult."""
     name_query = (name_query or "").strip()
     saet = (saet or "").strip()
     currency = (currency or "USD").upper().strip()
@@ -470,6 +471,162 @@ def history():
     prices = [e.market_usd for e in entries]
 
     return render_template("history.html", name=name, card_set=card_set, entries=entries, labels=labels, prices=prices)
+
+
+@bp.post("/api/scan-card-image")
+@csrf.exempt
+def scan_card_image():
+    """Modtag et base64-billede, kør Python OCR-pipeline og returner kortnavnet."""
+    try:
+        import base64
+
+        import cv2
+        import numpy as np
+    except ImportError:
+        return jsonify({"error": "Server-side OCR ikke tilgængelig (mangler cv2/numpy)."}), 503
+
+    try:
+        from pokemon_camera_scanner import normaliser_kortnavn
+    except ImportError:
+        return jsonify({"error": "pokemon_camera_scanner ikke tilgængelig."}), 503
+
+    data = request.get_json(silent=True) or {}
+    image_data = data.get("image", "")
+    if not image_data:
+        return jsonify({"error": "Ingen billeddata."}), 400
+
+    # Fjern data-URL prefix hvis til stede
+    if "," in image_data:
+        image_data = image_data.split(",", 1)[1]
+
+    try:
+        raw_bytes = base64.b64decode(image_data)
+        arr = np.frombuffer(raw_bytes, dtype=np.uint8)
+        frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    except Exception:
+        return jsonify({"error": "Kunne ikke afkode billede."}), 400
+
+    if frame is None:
+        return jsonify({"error": "Ugyldigt billedformat."}), 400
+
+    try:
+        import pytesseract
+    except ImportError:
+        return jsonify({"error": "pytesseract ikke tilgængelig."}), 503
+
+    import re
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # 3x upscale giver Tesseract markant bedre resultater på små tekstbånd
+    gray = cv2.resize(gray, None, fx=3.0, fy=3.0, interpolation=cv2.INTER_CUBIC)
+
+    # Byg tre preprocessede varianter og tag den med bedst gennemsnits-confidence
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4))
+    variants = [
+        clahe.apply(gray),                                          # CLAHE gråtone
+        cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1],  # Otsu
+        255 - cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[1],  # Inverteret Otsu
+    ]
+
+    def _run_ocr(img: np.ndarray) -> tuple[str, float]:
+        cfg = "--oem 3 --psm 7"
+        d = pytesseract.image_to_data(
+            img, lang="eng", config=cfg,
+            output_type=pytesseract.Output.DICT,
+        )
+        words = [w for w, c in zip(d["text"], d["conf"], strict=False) if w.strip() and int(c) > 0]
+        confs = [int(c) for c in d["conf"] if str(c) not in ("-1", "") and int(c) >= 0]
+        avg = sum(confs) / len(confs) if confs else 0.0
+        return " ".join(words), avg
+
+    best_text, best_conf = "", -1.0
+    for variant in variants:
+        text, conf = _run_ocr(variant)
+        logger.info("scan-card-image: conf=%.1f text=%r", conf, text)
+        if conf > best_conf:
+            best_conf, best_text = conf, text
+
+    cleaned = re.sub(r"[^A-Za-z0-9 .'\-]", "", best_text).strip()
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    best_line = max(lines, key=lambda line: sum(1 for c in line if c.isalpha())) if lines else cleaned
+
+    name = normaliser_kortnavn(best_line) if best_line else ""
+    if not name:
+        name = best_line
+
+    logger.info("scan-card-image: final name=%r (conf=%.1f)", name, best_conf)
+    return jsonify({"name": name, "raw": best_text})
+
+
+@bp.post("/api/scan-card-ai")
+@csrf.exempt
+def scan_card_ai():
+    """Modtag et base64-billede, send til Claude vision og returner kortnavnet."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY ikke sat. Sæt env-variablen og genstart serveren."}), 503
+
+    try:
+        import anthropic
+    except ImportError:
+        return jsonify({"error": "anthropic pakken er ikke installeret. Kør: pip install anthropic"}), 503
+
+    data = request.get_json(silent=True) or {}
+    image_data = data.get("image", "")
+    if not image_data:
+        return jsonify({"error": "Ingen billeddata."}), 400
+
+    if "," in image_data:
+        image_data = image_data.split(",", 1)[1]
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        # Detect media type from data-URL prefix (jpeg or png)
+        media_type = "image/jpeg"
+        if image_data_raw := data.get("image", ""):
+            if image_data_raw.startswith("data:image/png"):
+                media_type = "image/png"
+
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=64,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {"type": "base64", "media_type": media_type, "data": image_data},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            "This is a webcam photo of a Pokemon Trading Card Game card. "
+                            "Identify:\n"
+                            "1. The Pokemon name at the top of the card\n"
+                            "2. The TCG set — use the artwork, border style, set symbol and card design\n"
+                            "Reply with ONLY this format:\n"
+                            "NAME: <pokemon name>\n"
+                            "SET: <set name>"
+                        ),
+                    },
+                ],
+            }],
+        )
+        raw = response.content[0].text.strip() if response.content else ""
+        name, card_set = "", ""
+        for line in raw.splitlines():
+            if line.upper().startswith("NAME:"):
+                name = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("SET:"):
+                card_set = line.split(":", 1)[1].strip()
+        if not name:
+            name = raw
+    except Exception as e:
+        logger.exception("scan-card-ai fejl")
+        return jsonify({"error": str(e)}), 500
+
+    logger.info("scan-card-ai: name=%r set=%r", name, card_set)
+    return jsonify({"name": name, "set": card_set})
 
 
 @bp.get("/status")

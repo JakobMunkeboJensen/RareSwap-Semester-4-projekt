@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Resultater – Pokémon pris-scanner</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}" />
+    <meta name="theme-color" content="#ef4444" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="RareSwap" />
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/icon-192.png') }}" />
   </head>
   <body>
     <main class="container">
@@ -88,6 +93,7 @@
                       {% if current_user.is_authenticated %}
                         <br />
                         <form method="post" action="{{ url_for('alerts.create_alert') }}" style="display:inline-flex;gap:4px;margin-top:4px;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                           <input type="hidden" name="card_name" value="{{ r.name }}" />
                           <input type="hidden" name="card_set" value="{{ r.set }}" />
                           <input type="number" name="threshold_usd" step="0.01" min="0.01" placeholder="Alarm under $ (USD)" style="width:160px;font-size:0.8em;padding:2px 6px;" required />
