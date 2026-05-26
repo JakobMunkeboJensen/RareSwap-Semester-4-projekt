@@ -35,23 +35,31 @@ def _camera_loop() -> None:
     try:
         import cv2
         from picamera2 import Picamera2
-    except ImportError:
+    except ImportError as e:
+        logger.error("Pi-kamera import fejl: %s", e)
         return
-    picam2 = Picamera2()
-    picam2.configure(picam2.create_preview_configuration(main={"size": (1920, 1080)}))
-    picam2.start()
-    time.sleep(1.5)
     try:
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_preview_configuration(main={"size": (1920, 1080)}))
+        picam2.start()
+        logger.info("Pi-kamera startet OK")
+        time.sleep(1.5)
         while _cam_active:
             frame = picam2.capture_array()
             bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             with _cam_lock:
                 _cam_frame = bgr
+    except Exception:
+        logger.exception("Pi-kamera loop fejl")
     finally:
-        picam2.stop()
-        picam2.close()
+        try:
+            picam2.stop()
+            picam2.close()
+        except Exception:
+            pass
         with _cam_lock:
             _cam_frame = None
+        logger.info("Pi-kamera stoppet")
 
 
 def _ensure_camera() -> bool:
