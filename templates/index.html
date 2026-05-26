@@ -59,9 +59,13 @@
 
       <section class="card" id="pi-camera-section">
         <h2 class="section-title">Pi kamera scan</h2>
-        <p class="hint">Læg kortet foran Pi-kameraet og tryk scan.</p>
-        <div class="row">
-          <button class="button" id="pi-scan-btn" type="button">Scan med Pi-kamera</button>
+        <div class="webcam-preview-wrap" id="pi-preview-wrap" hidden>
+          <img id="pi-stream" alt="Pi kamera live" style="width:100%;border-radius:8px;" />
+        </div>
+        <div class="row" style="margin-top:0.75rem">
+          <button class="button" id="pi-start-btn" type="button">Start kamera</button>
+          <button class="button scan-btn" id="pi-scan-btn" type="button" disabled>Scan kort</button>
+          <button class="button secondary" id="pi-stop-btn" type="button" disabled>Stop</button>
         </div>
         <p class="webcam-status muted" id="pi-scan-status" role="status"></p>
         <div id="pi-scan-confirm" hidden>
@@ -74,29 +78,58 @@
       </section>
       <script>
         (function () {
-          var btn = document.getElementById("pi-scan-btn");
+          var startBtn = document.getElementById("pi-start-btn");
+          var scanBtn = document.getElementById("pi-scan-btn");
+          var stopBtn = document.getElementById("pi-stop-btn");
           var status = document.getElementById("pi-scan-status");
           var confirm = document.getElementById("pi-scan-confirm");
           var nameEl = document.getElementById("pi-scan-name");
           var goSet = document.getElementById("pi-scan-go-set");
           var goName = document.getElementById("pi-scan-go-name");
+          var streamImg = document.getElementById("pi-stream");
+          var previewWrap = document.getElementById("pi-preview-wrap");
           var lastResult = {};
 
-          btn.addEventListener("click", function () {
-            status.textContent = "Scanner...";
+          function stopStream() {
+            streamImg.src = "";
+            previewWrap.hidden = true;
+            scanBtn.disabled = true;
+            stopBtn.disabled = true;
+            startBtn.disabled = false;
+          }
+
+          startBtn.addEventListener("click", function () {
+            previewWrap.hidden = false;
+            streamImg.src = "/api/pi-camera-stream";
+            startBtn.disabled = true;
+            scanBtn.disabled = false;
+            stopBtn.disabled = false;
+            status.textContent = "Hold kortet foran kameraet og tryk Scan kort.";
             confirm.hidden = true;
-            btn.disabled = true;
-            fetch("/api/pi-camera-scan", { method: "POST", headers: { "Content-Type": "application/json" } })
-              .then(function (r) { return r.json(); })
-              .then(function (data) {
-                if (data.error) { status.textContent = data.error; return; }
-                lastResult = data;
-                nameEl.textContent = data.name + (data.set ? ' (' + data.set + ')' : '');
-                status.textContent = "";
-                confirm.hidden = false;
-              })
-              .catch(function (e) { status.textContent = "Fejl: " + e.message; })
-              .finally(function () { btn.disabled = false; });
+          });
+
+          stopBtn.addEventListener("click", function () {
+            stopStream();
+            status.textContent = "";
+          });
+
+          scanBtn.addEventListener("click", function () {
+            status.textContent = "Stopper stream...";
+            scanBtn.disabled = true;
+            stopStream();
+            setTimeout(function () {
+              status.textContent = "Scanner kort...";
+              fetch("/api/pi-camera-scan", { method: "POST", headers: { "Content-Type": "application/json" } })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                  if (data.error) { status.textContent = data.error; return; }
+                  lastResult = data;
+                  nameEl.textContent = data.name + (data.set ? ' (' + data.set + ')' : '');
+                  status.textContent = "";
+                  confirm.hidden = false;
+                })
+                .catch(function (e) { status.textContent = "Fejl: " + e.message; });
+            }, 1500);
           });
 
           goSet.addEventListener("click", function () {

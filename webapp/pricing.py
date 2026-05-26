@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, TypedDict
 
 import requests
-from flask import Blueprint, abort, jsonify, render_template, request
+from flask import Blueprint, Response, abort, jsonify, render_template, request, stream_with_context
 
 from pokemon_pris_scanner import hent_kort_fra_api, udtraek_priser
 
@@ -581,6 +581,36 @@ def scan_card_ai():
 
     logger.info("scan-card-ai: name=%r set=%r", name, card_set)
     return jsonify({"name": name, "set": card_set})
+
+
+@bp.get("/api/pi-camera-stream")
+def pi_camera_stream():
+    """Stream live MJPEG fra Pi-kameraet."""
+    try:
+        from picamera2 import Picamera2
+    except ImportError:
+        abort(503)
+
+    def generate():
+        import time as _time
+        import cv2
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_preview_configuration(main={"size": (640, 480)}))
+        picam2.start()
+        _time.sleep(1.0)
+        try:
+            while True:
+                frame = picam2.capture_array()
+                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
+        except GeneratorExit:
+            pass
+        finally:
+            picam2.stop()
+            picam2.close()
+
+    return Response(stream_with_context(generate()), mimetype="multipart/x-mixed-replace; boundary=frame")
 
 
 @bp.post("/api/pi-camera-scan")
