@@ -28,10 +28,12 @@ _cam_lock: threading.Lock = threading.Lock()
 _cam_frame: "Any" = None
 _cam_thread: "threading.Thread | None" = None
 _cam_active: bool = False
+_picam2_global: "Any" = None
+_cam_scan_event: threading.Event = threading.Event()
 
 
 def _camera_loop() -> None:
-    global _cam_frame, _cam_active
+    global _cam_frame, _cam_active, _picam2_global
     try:
         import cv2
         from picamera2 import Picamera2
@@ -40,11 +42,16 @@ def _camera_loop() -> None:
         return
     try:
         picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(main={"size": (1920, 1080)}))
+        preview_cfg = picam2.create_preview_configuration(main={"size": (854, 480)})
+        picam2.configure(preview_cfg)
         picam2.start()
+        _picam2_global = picam2
         logger.info("Pi-kamera startet OK")
         time.sleep(1.5)
         while _cam_active:
+            if _cam_scan_event.is_set():
+                time.sleep(0.05)
+                continue
             frame = picam2.capture_array()
             bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             with _cam_lock:
@@ -57,6 +64,7 @@ def _camera_loop() -> None:
             picam2.close()
         except Exception:
             pass
+        _picam2_global = None
         with _cam_lock:
             _cam_frame = None
         logger.info("Pi-kamera stoppet")
@@ -665,24 +673,30 @@ def pi_camera_scan():
     if not _ensure_camera():
         return jsonify({"error": "Pi-kamera ikke tilgængeligt på denne enhed."}), 503
 
-    frame = None
+    # Vent på at kameraet er klar
     for _ in range(50):
-        with _cam_lock:
-            frame = _cam_frame
-        if frame is not None:
+        if _picam2_global is not None:
             break
         time.sleep(0.1)
 
-    if frame is None:
+    if _picam2_global is None:
         return jsonify({"error": "Kameraet startede ikke — prøv igen."}), 503
 
     try:
         import base64
         import cv2
-        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        _cam_scan_event.set()
+        time.sleep(0.15)
+        still_cfg = _picam2_global.create_still_configuration(main={"size": (1920, 1080)})
+        frame = _picam2_global.switch_mode_and_capture_array(still_cfg)
+        _picam2_global.switch_mode(_picam2_global.create_preview_configuration(main={"size": (854, 480)}))
+        _cam_scan_event.clear()
+        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        _, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 95])
         image_data = base64.b64encode(buf.tobytes()).decode("utf-8")
     except Exception as e:
-        return jsonify({"error": f"Kunne ikke behandle billede: {e}"}), 500
+        _cam_scan_event.clear()
+        return jsonify({"error": f"Kunne ikke tage billede: {e}"}), 500
 
     try:
         import anthropic
