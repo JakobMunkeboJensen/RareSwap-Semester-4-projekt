@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
@@ -21,6 +22,49 @@ from .models import PriceHistory
 logger = logging.getLogger(__name__)
 
 bp = Blueprint("pricing", __name__)
+
+# Delt kamerainstans — kører i baggrunden så stream og scan ikke konflikter
+_cam_lock: threading.Lock = threading.Lock()
+_cam_frame: "Any" = None
+_cam_thread: "threading.Thread | None" = None
+_cam_active: bool = False
+
+
+def _camera_loop() -> None:
+    global _cam_frame, _cam_active
+    try:
+        import cv2
+        from picamera2 import Picamera2
+    except ImportError:
+        return
+    picam2 = Picamera2()
+    picam2.configure(picam2.create_preview_configuration(main={"size": (1920, 1080)}))
+    picam2.start()
+    time.sleep(1.5)
+    try:
+        while _cam_active:
+            frame = picam2.capture_array()
+            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            with _cam_lock:
+                _cam_frame = bgr
+    finally:
+        picam2.stop()
+        picam2.close()
+        with _cam_lock:
+            _cam_frame = None
+
+
+def _ensure_camera() -> bool:
+    global _cam_thread, _cam_active
+    try:
+        from picamera2 import Picamera2  # noqa: F401
+    except ImportError:
+        return False
+    if _cam_thread is None or not _cam_thread.is_alive():
+        _cam_active = True
+        _cam_thread = threading.Thread(target=_camera_loop, daemon=True)
+        _cam_thread.start()
+    return True
 
 SUPPORTED_CURRENCIES: dict[str, str] = {
     "USD": "$",
@@ -585,30 +629,21 @@ def scan_card_ai():
 
 @bp.get("/api/pi-camera-stream")
 def pi_camera_stream():
-    """Stream live MJPEG fra Pi-kameraet."""
-    try:
-        from picamera2 import Picamera2
-    except ImportError:
+    """Stream live MJPEG fra Pi-kameraet via delt kamerainstans."""
+    if not _ensure_camera():
         abort(503)
 
     def generate():
-        import time as _time
         import cv2
-        picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(main={"size": (640, 480)}))
-        picam2.start()
-        _time.sleep(1.0)
-        try:
-            while True:
-                frame = picam2.capture_array()
-                frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 70])
+        time.sleep(2.0)
+        while True:
+            with _cam_lock:
+                frame = _cam_frame
+            if frame is not None:
+                small = cv2.resize(frame, (854, 480))
+                _, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 70])
                 yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buf.tobytes() + b"\r\n"
-        except GeneratorExit:
-            pass
-        finally:
-            picam2.stop()
-            picam2.close()
+            time.sleep(0.05)
 
     return Response(stream_with_context(generate()), mimetype="multipart/x-mixed-replace; boundary=frame")
 
@@ -616,34 +651,28 @@ def pi_camera_stream():
 @bp.post("/api/pi-camera-scan")
 @csrf.exempt
 def pi_camera_scan():
-    """Tag et billede med Pi-kameraet og scan det med Claude AI."""
+    """Tag et billede fra den delte kamerainstans og scan det med Claude AI."""
     api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return jsonify({"error": "ANTHROPIC_API_KEY ikke sat."}), 503
 
+    if not _ensure_camera():
+        return jsonify({"error": "Pi-kamera ikke tilgængeligt på denne enhed."}), 503
+
+    time.sleep(0.1)
+    with _cam_lock:
+        frame = _cam_frame
+
+    if frame is None:
+        return jsonify({"error": "Ingen kamera frame — vent lidt og prøv igen."}), 503
+
     try:
         import base64
-        import time as _time
-
         import cv2
-        import numpy as np
-        from picamera2 import Picamera2
-    except ImportError as e:
-        return jsonify({"error": f"Pi-kamera ikke tilgængeligt på denne enhed: {e}"}), 503
-
-    try:
-        picam2 = Picamera2()
-        picam2.configure(picam2.create_still_configuration(main={"size": (1280, 720)}))
-        picam2.start()
-        _time.sleep(2.0)
-        frame = picam2.capture_array()
-        picam2.stop()
-        picam2.close()
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        _, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
         image_data = base64.b64encode(buf.tobytes()).decode("utf-8")
     except Exception as e:
-        return jsonify({"error": f"Kunne ikke tage billede: {e}"}), 500
+        return jsonify({"error": f"Kunne ikke behandle billede: {e}"}), 500
 
     try:
         import anthropic
