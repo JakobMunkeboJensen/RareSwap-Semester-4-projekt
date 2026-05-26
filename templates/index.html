@@ -55,6 +55,64 @@
 
       {% include "_webcam_scanner.html" %}
 
+      <div class="divider-label">eller</div>
+
+      <section class="card" id="pi-camera-section">
+        <h2 class="section-title">Pi kamera scan</h2>
+        <p class="hint">Læg kortet foran Pi-kameraet og tryk scan.</p>
+        <div class="row">
+          <button class="button" id="pi-scan-btn" type="button">Scan med Pi-kamera</button>
+        </div>
+        <p class="webcam-status muted" id="pi-scan-status" role="status"></p>
+        <div id="pi-scan-confirm" hidden>
+          <p class="confirm-label">Fandt: <strong id="pi-scan-name"></strong></p>
+          <div class="row">
+            <button class="button" id="pi-scan-go-set" type="button">Søg med sæt</button>
+            <button class="button secondary" id="pi-scan-go-name" type="button">Søg alle versioner</button>
+          </div>
+        </div>
+      </section>
+      <script>
+        (function () {
+          var btn = document.getElementById("pi-scan-btn");
+          var status = document.getElementById("pi-scan-status");
+          var confirm = document.getElementById("pi-scan-confirm");
+          var nameEl = document.getElementById("pi-scan-name");
+          var goSet = document.getElementById("pi-scan-go-set");
+          var goName = document.getElementById("pi-scan-go-name");
+          var lastResult = {};
+
+          btn.addEventListener("click", function () {
+            status.textContent = "Scanner...";
+            confirm.hidden = true;
+            btn.disabled = true;
+            fetch("/api/pi-camera-scan", { method: "POST", headers: { "Content-Type": "application/json" } })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                if (data.error) { status.textContent = data.error; return; }
+                lastResult = data;
+                nameEl.textContent = data.name + (data.set ? ' (' + data.set + ')' : '');
+                status.textContent = "";
+                confirm.hidden = false;
+              })
+              .catch(function (e) { status.textContent = "Fejl: " + e.message; })
+              .finally(function () { btn.disabled = false; });
+          });
+
+          goSet.addEventListener("click", function () {
+            if (!lastResult.name) return;
+            var url = "/lookup?q=" + encodeURIComponent(lastResult.name);
+            if (lastResult.set) url += "&set=" + encodeURIComponent(lastResult.set);
+            window.location.href = url;
+          });
+
+          goName.addEventListener("click", function () {
+            if (!lastResult.name) return;
+            window.location.href = "/lookup?q=" + encodeURIComponent(lastResult.name);
+          });
+        })();
+      </script>
+
       <footer class="footer">
         <span class="muted">
           <a href="{{ url_for('pricing.status') }}">Status</a>

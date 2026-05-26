@@ -583,6 +583,72 @@ def scan_card_ai():
     return jsonify({"name": name, "set": card_set})
 
 
+@bp.post("/api/pi-camera-scan")
+@csrf.exempt
+def pi_camera_scan():
+    """Tag et billede med Pi-kameraet og scan det med Claude AI."""
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        return jsonify({"error": "ANTHROPIC_API_KEY ikke sat."}), 503
+
+    try:
+        import base64
+        import time as _time
+
+        import cv2
+        import numpy as np
+        from picamera2 import Picamera2
+    except ImportError as e:
+        return jsonify({"error": f"Pi-kamera ikke tilgængeligt på denne enhed: {e}"}), 503
+
+    try:
+        picam2 = Picamera2()
+        picam2.configure(picam2.create_preview_configuration(main={"size": (1280, 720)}))
+        picam2.start()
+        _time.sleep(0.5)
+        frame = picam2.capture_array()
+        picam2.stop()
+        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        image_data = base64.b64encode(buf.tobytes()).decode("utf-8")
+    except Exception as e:
+        return jsonify({"error": f"Kunne ikke tage billede: {e}"}), 500
+
+    try:
+        import anthropic
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=64,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                    {"type": "text", "text": (
+                        "This is a photo of a Pokemon Trading Card Game card. "
+                        "Identify:\n1. The Pokemon name at the top of the card\n"
+                        "2. The TCG set\nReply ONLY:\nNAME: <name>\nSET: <set>"
+                    )},
+                ],
+            }],
+        )
+        raw = response.content[0].text.strip() if response.content else ""
+        name, card_set = "", ""
+        for line in raw.splitlines():
+            if line.upper().startswith("NAME:"):
+                name = line.split(":", 1)[1].strip()
+            elif line.upper().startswith("SET:"):
+                card_set = line.split(":", 1)[1].strip()
+        if not name:
+            name = raw
+    except Exception as e:
+        logger.exception("pi-camera-scan AI fejl")
+        return jsonify({"error": str(e)}), 500
+
+    logger.info("pi-camera-scan: name=%r set=%r", name, card_set)
+    return jsonify({"name": name, "set": card_set})
+
+
 @bp.get("/status")
 def status():
     """Vis en sundhedstjekside for API'et og valutakurs-cachen."""
