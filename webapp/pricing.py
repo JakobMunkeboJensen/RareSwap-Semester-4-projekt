@@ -659,12 +659,16 @@ def pi_camera_scan():
     if not _ensure_camera():
         return jsonify({"error": "Pi-kamera ikke tilgængeligt på denne enhed."}), 503
 
-    time.sleep(0.1)
-    with _cam_lock:
-        frame = _cam_frame
+    frame = None
+    for _ in range(50):
+        with _cam_lock:
+            frame = _cam_frame
+        if frame is not None:
+            break
+        time.sleep(0.1)
 
     if frame is None:
-        return jsonify({"error": "Ingen kamera frame — vent lidt og prøv igen."}), 503
+        return jsonify({"error": "Kameraet startede ikke — prøv igen."}), 503
 
     try:
         import base64
