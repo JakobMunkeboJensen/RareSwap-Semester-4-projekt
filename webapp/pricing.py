@@ -7,7 +7,7 @@ import os
 import time
 from collections import deque
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, TypedDict
 
 import requests
@@ -16,8 +16,7 @@ from flask import Blueprint, abort, jsonify, render_template, request
 from pokemon_pris_scanner import hent_kort_fra_api, udtraek_priser
 
 from .extensions import csrf, db
-from .mail import send_email
-from .models import PriceAlert, PriceHistory, User
+from .models import PriceHistory
 
 logger = logging.getLogger(__name__)
 
@@ -146,50 +145,6 @@ def _convert(v_usd: float | None, fx: float) -> float | None:
         return None
     return round(v_usd * fx, 2)
 
-
-_ALERT_COOLDOWN = timedelta(hours=24)
-
-
-def _check_and_fire_alerts(card_name: str, card_set: str, market_usd: float) -> None:
-    """Tjek alle aktive alarmer for kortet og send e-mail til brugere hvis grænsen er nået."""
-    now = datetime.utcnow()
-    try:
-        alerts = db.session.execute(
-            db.select(PriceAlert).where(
-                PriceAlert.card_name == card_name,
-                PriceAlert.card_set == card_set,
-                PriceAlert.is_active,
-                PriceAlert.threshold_usd >= market_usd,
-            )
-        ).scalars().all()
-    except Exception:
-        logger.exception("Could not query price alerts")
-        return
-
-    for alert in alerts:
-        if alert.last_triggered_at and (now - alert.last_triggered_at) < _ALERT_COOLDOWN:
-            continue
-        user = db.session.get(User, alert.user_id)
-        if user is None or not user.email:
-            continue
-        try:
-            body = (
-                f"Din pris-alarm for {card_name} ({card_set}) er udløst!\n\n"
-                f"Nuværende market-pris: ${market_usd:.2f} USD\n"
-                f"Din grænse: ${alert.threshold_usd:.2f} USD\n\n"
-                f"Se mere på sitet: /lookup?q={card_name}\n\n"
-                f"Du kan slette alarmen på /alerts."
-            )
-            send_email(user.email, f"Pris-alarm: {card_name}", body)
-            alert.last_triggered_at = now
-            logger.info("Fired price alert for %s to %s", card_name, user.email)
-        except Exception:
-            logger.exception("Failed to send price alert to %s", user.email)
-
-    try:
-        db.session.commit()
-    except Exception:
-        db.session.rollback()
 
 
 def _rate_limit_or_429() -> None:
@@ -397,7 +352,6 @@ def _lookup_prices(name_query: str, currency: str, saet: str = "") -> LookupResu
 
         if market_usd is not None:
             history_entries.append(PriceHistory(card_name=card_name, card_set=card_set, market_usd=market_usd))
-            _check_and_fire_alerts(card_name, card_set, market_usd)
 
     if history_entries:
         try:

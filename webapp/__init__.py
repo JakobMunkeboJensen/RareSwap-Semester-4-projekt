@@ -7,10 +7,7 @@ import os
 
 from flask import Flask, jsonify, render_template, request
 
-from .alerts import bp as alerts_bp
-from .auth import bp as auth_bp
-from .extensions import csrf, db, login_manager
-from .models import User, ensure_sqlite_user_email_column
+from .extensions import csrf, db
 from .pricing import bp as pricing_bp
 
 logger = logging.getLogger(__name__)
@@ -31,27 +28,8 @@ def create_app() -> Flask:
     app.config["SQLALCHEMY_DATABASE_URI"] = os.getenv("DATABASE_URL", f"sqlite:///{db_path}")
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    app.config["RESET_TOKEN_MAX_AGE_S"] = int(os.getenv("RESET_TOKEN_MAX_AGE_S", "3600"))
-    app.config["MAIL_FROM"] = os.getenv("MAIL_FROM", "noreply@localhost")
-    app.config["SMTP_HOST"] = os.getenv("SMTP_HOST", "")
-    app.config["SMTP_PORT"] = int(os.getenv("SMTP_PORT", "587"))
-    app.config["SMTP_USER"] = os.getenv("SMTP_USER", "")
-    app.config["SMTP_PASSWORD"] = os.getenv("SMTP_PASSWORD", "")
-    app.config["SMTP_TLS"] = os.getenv("SMTP_TLS", "1") not in {"0", "false", "False"}
-
     db.init_app(app)
     csrf.init_app(app)
-    login_manager.login_view = "auth.login"
-    login_manager.init_app(app)
-
-    @login_manager.user_loader
-    def load_user(user_id: str) -> User | None:
-        """Genindlæs brugerobjektet fra sessions-bruger-ID."""
-        try:
-            uid = int(user_id)
-        except ValueError:
-            return None
-        return db.session.get(User, uid)
 
     @app.errorhandler(429)
     def too_many_requests(_e):
@@ -76,12 +54,8 @@ def create_app() -> Flask:
         )
 
     app.register_blueprint(pricing_bp)
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(alerts_bp)
 
     with app.app_context():
         db.create_all()
-        ensure_sqlite_user_email_column(app)
 
     return app
-

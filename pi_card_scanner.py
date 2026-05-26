@@ -19,7 +19,7 @@ from picamera2 import Picamera2
 # og bruge http://127.0.0.1:5000/cards?name=<kortnavn>
 logger = logging.getLogger(__name__)
 
-API_BASE_URL = os.getenv("POKEMON_API_BASE_URL", "http://127.0.0.1:5000")
+API_BASE_URL = os.getenv("POKEMON_API_BASE_URL", "http://127.0.0.1:8000")
 API_SEARCH_PATH = os.getenv("POKEMON_API_SEARCH_PATH", "/cards")
 
 

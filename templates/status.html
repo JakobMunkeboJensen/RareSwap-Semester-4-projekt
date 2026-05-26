@@ -60,14 +60,7 @@
 
       <footer class="footer">
         <span class="muted">
-          {% if current_user.is_authenticated %}
-            <a href="{{ url_for('auth.me') }}">Min side</a> —
-            <a href="{{ url_for('auth.logout') }}">Log ud</a>
-          {% else %}
-            <a href="{{ url_for('auth.login') }}">Login</a> —
-            <a href="{{ url_for('auth.register') }}">Opret bruger</a>
-          {% endif %}
-          <span style="margin-left: 10px;">Endpoint: <code>/status</code></span>
+          <span>Endpoint: <code>/status</code></span>
         </span>
       </footer>
     </main>
