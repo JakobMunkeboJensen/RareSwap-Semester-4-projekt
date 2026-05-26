@@ -606,13 +606,11 @@ def scan_card_ai():
                     {
                         "type": "text",
                         "text": (
-                            "This is a webcam photo of a Pokemon Trading Card Game card. "
-                            "Identify:\n"
-                            "1. The Pokemon name at the top of the card\n"
-                            "2. The TCG set — use the artwork, border style, set symbol and card design\n"
-                            "Reply with ONLY this format:\n"
-                            "NAME: <pokemon name>\n"
-                            "SET: <set name>"
+                            "This is a webcam photo of a Pokemon Trading Card Game (TCG) card. "
+                            "Look carefully at the card name printed at the top and identify the set from the card design, border, set symbol, and artwork style. "
+                            "Include older sets like Base Set, Jungle, Fossil, Team Rocket, Gym Heroes, Gym Challenge, Neo Genesis, Neo Discovery, Neo Revelation, Neo Destiny, Expedition, Aquapolis, Skyridge, and all EX, Diamond & Pearl, HeartGold SoulSilver, Black & White, XY, Sun & Moon, Sword & Shield, and Scarlet & Violet series. "
+                            "Always give your best guess even if uncertain. Never reply with Unknown. "
+                            "Reply ONLY in this format:\nNAME: <pokemon name>\nSET: <set name>"
                         ),
                     },
                 ],
@@ -697,9 +695,11 @@ def pi_camera_scan():
                 "content": [
                     {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
                     {"type": "text", "text": (
-                        "This is a photo of a Pokemon Trading Card Game card. "
-                        "Identify:\n1. The Pokemon name at the top of the card\n"
-                        "2. The TCG set\nReply ONLY:\nNAME: <name>\nSET: <set>"
+                        "This is a photo of a Pokemon Trading Card Game (TCG) card. "
+                        "Look carefully at the card name printed at the top and identify the set from the card design, border, set symbol, and artwork style. "
+                        "Include older sets like Base Set, Jungle, Fossil, Team Rocket, Gym Heroes, Gym Challenge, Neo Genesis, Neo Discovery, Neo Revelation, Neo Destiny, Expedition, Aquapolis, Skyridge, and all EX, Diamond & Pearl, HeartGold SoulSilver, Black & White, XY, Sun & Moon, Sword & Shield, and Scarlet & Violet series. "
+                        "Always give your best guess even if uncertain. Never reply with Unknown. "
+                        "Reply ONLY in this format:\nNAME: <pokemon name>\nSET: <set name>"
                     )},
                 ],
             }],
