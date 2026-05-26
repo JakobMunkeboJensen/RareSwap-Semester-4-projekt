@@ -603,11 +603,12 @@ def pi_camera_scan():
 
     try:
         picam2 = Picamera2()
-        picam2.configure(picam2.create_preview_configuration(main={"size": (1280, 720)}))
+        picam2.configure(picam2.create_still_configuration(main={"size": (1280, 720)}))
         picam2.start()
-        _time.sleep(0.5)
+        _time.sleep(2.0)
         frame = picam2.capture_array()
         picam2.stop()
+        picam2.close()
         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
         _, buf = cv2.imencode(".jpg", frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
         image_data = base64.b64encode(buf.tobytes()).decode("utf-8")
